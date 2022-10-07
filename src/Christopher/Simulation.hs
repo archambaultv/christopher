@@ -1,5 +1,5 @@
 -- |
--- Module      :  Christopher.CLI
+-- Module      :  Christopher.Simulation
 -- Copyright   :  © 2022 Vincent Archambault
 -- License     :  MIT
 --
@@ -29,6 +29,8 @@ where
 import Data.Decimal
 import Data.Functor.Foldable
 import Control.Monad.State
+import Christopher.Taxes
+import Christopher.Markets
 
 data SimulationInfo = SimulationInfo {
   infoAssets :: Assets,
@@ -38,18 +40,6 @@ data SimulationInfo = SimulationInfo {
 type SimulationResults = Assets
 
 type Assets = Asset
-
-data AccountType 
-  = RRSP -- REER
-  | TFSA -- CELI
-  deriving (Show, Eq)
-
-data Asset = Asset {
-  aType :: AccountType,
-  aBalance :: Decimal
-} deriving (Show, Eq)
-
-type Rate = Rational
 
 data YearlyDatum = YearlyDatum {
   fiscalDatum :: FiscalDatum,
@@ -61,11 +51,6 @@ data FiscalDatum = FiscalDatum {
   needForSpending :: Decimal, -- Before income tax amount
   taxBrackets :: TaxBrackets
 } deriving (Show, Eq)
-
-data TaxBrackets
-  = TaxFinalBracket Decimal Rate
-  | TaxBracket (Decimal, Decimal) Rate TaxBrackets
- deriving (Show, Eq)
 
 type SState = State Assets
 
