@@ -14,12 +14,7 @@ module Christopher.Simulation
   SimulationInfo(..),
   SimulationResults,
   Assets,
-  Asset(..),
-  AccountType(..),
-  Rate,
-  YearlyDatum(..),
-  FiscalDatum(..),
-  TaxBrackets(..),
+  YearlyData(..),
   SState,
   Strategy(..),
   runSimulation
@@ -34,29 +29,25 @@ import Christopher.Markets
 
 data SimulationInfo = SimulationInfo {
   infoAssets :: Assets,
-  infoYearlyData :: [YearlyDatum]
+  infoYearlyData :: [YearlyData]
 } deriving (Show, Eq)
 
 type SimulationResults = Assets
 
 type Assets = Asset
 
-data YearlyDatum = YearlyDatum {
-  fiscalDatum :: FiscalDatum,
-  yield :: Rate
-} deriving (Show, Eq)
-
-data FiscalDatum = FiscalDatum {
-  income :: Decimal, -- Before income tax amount
-  needForSpending :: Decimal, -- Before income tax amount
-  taxBrackets :: TaxBrackets
+data YearlyData = YearlyData {
+  ydIncome :: Income, -- Before income tax
+  ydNeedForSpending :: Decimal, -- Before income tax. As salary.
+  ydIncomeTaxInfo :: IncomeTaxInfo,
+  ydYield :: Rate
 } deriving (Show, Eq)
 
 type SState = State Assets
 
 data Strategy = Strategy {
   sName :: String,
-  sPayTaxesAndInvest :: FiscalDatum -> SState ()
+  sPayTaxesAndInvest :: (Income, Decimal) -> IncomeTaxInfo -> SState ()
 } 
 
 instance Show Strategy where
@@ -70,11 +61,11 @@ runSimulation (strat, info) =
   in evalState simul (infoAssets info)
 
   where
-    alg :: ListF YearlyDatum (SState SimulationResults) -> (SState SimulationResults)
+    alg :: ListF YearlyData (SState SimulationResults) -> (SState SimulationResults)
     alg Nil = get >>= pure
-    alg (Cons datum next) = do
-      sPayTaxesAndInvest strat (fiscalDatum datum)
-      simulateMarket (yield datum)
+    alg (Cons yearlyData next) = do
+      sPayTaxesAndInvest strat (ydIncome yearlyData, ydNeedForSpending yearlyData) (ydIncomeTaxInfo yearlyData)
+      simulateMarket (ydYield yearlyData)
       next
 
 simulateMarket :: Rate -> SState ()
