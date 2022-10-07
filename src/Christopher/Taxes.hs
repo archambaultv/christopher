@@ -1,3 +1,4 @@
+{-# LANGUAGE DeriveFunctor, DeriveFoldable, DeriveTraversable, TemplateHaskell, TypeFamilies #-}
 -- |
 -- Module      :  Christopher.Taxes
 -- Copyright   :  © 2022 Vincent Archambault
@@ -12,6 +13,7 @@ module Christopher.Taxes
 (
   IncomeTaxInfo(..),
   TaxBrackets(..),
+  TaxBracketsF(..),
   IncomeTax(..),
   FederalIncomeTax(..),
   QuebecIncomeTax(..),
@@ -24,17 +26,13 @@ where
 
 import Data.Decimal
 import Data.Functor.Foldable
+import Data.Functor.Foldable.TH (makeBaseFunctor)
 import Christopher.Markets (Rate)
 
 data IncomeTaxInfo = Taxes {
   fedTaxes :: FederalIncomeTax,
   qcTaxes :: QuebecIncomeTax
-}
-
-data TaxBrackets
-  = FirstTaxBracket Rate 
-  | TaxBracket Decimal Rate TaxBrackets -- Applies to any amount above or equal to this one
- deriving (Show, Eq)
+} deriving (Show, Eq)
 
 data FederalIncomeTax = FederalIncomeTax{
   fedTaxBrackets :: TaxBrackets,
@@ -45,7 +43,7 @@ data FederalIncomeTax = FederalIncomeTax{
   fedEligibleDivMultiplier :: Rate,
   fedNonEligibleCreditRate :: Rate,
   fedNonEligibleDivMultiplier :: Rate
-}
+} deriving (Show, Eq)
 
 data QuebecIncomeTax = QuebecIncomeTax{
   qcTaxBrackets :: TaxBrackets,
@@ -55,7 +53,7 @@ data QuebecIncomeTax = QuebecIncomeTax{
   qcEligibleDivMultiplier :: Rate,
   qcNonEligibleCreditRate :: Rate,
   qcNonEligibleDivMultiplier :: Rate
-}
+} deriving (Show, Eq)
 
 -- Things that are common to both Canada and Quebec, so we can share
 -- some code
@@ -86,11 +84,20 @@ instance IncomeTax FederalIncomeTax where
   nonEligibleCreditRate = fedNonEligibleCreditRate
   nonEligibleDivMultiplier = fedNonEligibleDivMultiplier
 
+-- Brackets limit must be in increasing order
+data TaxBrackets
+  = TopTaxBracket Rate -- Anything above
+  | TaxBracket Decimal Rate TaxBrackets -- Applies to any amount below or equal to this one
+ deriving (Show, Eq)
+
+makeBaseFunctor ''TaxBrackets
+
+
 data Income = Income {
   iSalary :: Decimal,
   iEligibleDividend :: Decimal, -- Determiné
   iNonEligibleDividend :: Decimal
-}
+} deriving (Show, Eq)
 
 totalIncome :: Income -> Decimal
 totalIncome income = iSalary income 
@@ -119,7 +126,21 @@ personalCredit :: (IncomeTax a) => a -> Decimal
 personalCredit t = roundTo 2 $ basicPersonnalAmnt t *. creditMultiplier t
 
 applyBrackets :: (IncomeTax a) => a -> Decimal -> Decimal
-applyBrackets _ _ = 0
+applyBrackets t x = roundTo 2 $ cata alg (taxBrackets t) (0,0)
+  where
+    alg :: TaxBracketsF ((Decimal, Decimal) -> Decimal) -> ((Decimal, Decimal) -> Decimal) 
+    -- We have reach the top bracket
+    alg (TopTaxBracketF rate) (acc, _) = acc + x *. rate
+
+    -- We have not reach the first bracket
+    alg (TaxBracketF limit rate upperBrackets) (acc, lowerLimit) =
+      if x < limit
+      then -- This bracket if the final stop
+           acc + (x - lowerLimit) *. rate
+      else  
+           -- Compute this bracket and move on to the next
+        let acc' = acc + (limit - lowerLimit) *. rate
+        in upperBrackets (acc', limit)
 
 -- Returns the after tax amount and the taxes paid
 computeTax :: IncomeTaxInfo -> Income -> (Decimal, Decimal)
