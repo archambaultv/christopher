@@ -18,6 +18,7 @@ module Christopher.Taxes
   FederalIncomeTax(..),
   QuebecIncomeTax(..),
   Income(..),
+  salary,
   computeTax,
   computeFedTax,
   computeQcTax
@@ -98,6 +99,9 @@ data Income = Income {
   iEligibleDividend :: Decimal, -- Determiné
   iNonEligibleDividend :: Decimal
 } deriving (Show, Eq)
+
+salary :: Decimal -> Income
+salary x = Income x 0 0
 
 totalIncome :: Income -> Decimal
 totalIncome income = iSalary income 
