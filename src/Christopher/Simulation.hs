@@ -57,8 +57,8 @@ data YearlyDatum = YearlyDatum {
 } deriving (Show, Eq)
 
 data FiscalDatum = FiscalDatum {
-  income :: Decimal,
-  needForSpending :: Decimal,
+  income :: Decimal, -- Before income tax amount
+  needForSpending :: Decimal, -- Before income tax amount
   taxBrackets :: TaxBrackets
 } deriving (Show, Eq)
 
