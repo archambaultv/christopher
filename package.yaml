@@ -21,6 +21,9 @@ description:         Please see the README on GitHub at <https://github.com/arch
 
 dependencies:
 - base >= 4.7 && < 5
+- mtl
+- recursion-schemes
+- Decimal
 
 ghc-options:
 - -Wall
@@ -37,7 +40,7 @@ library:
   source-dirs: src
 
 executables:
-  christopher-exe:
+  christopher:
     main:                Main.hs
     source-dirs:         app
     ghc-options:
