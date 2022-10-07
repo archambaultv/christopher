@@ -21,7 +21,10 @@ module Christopher.Taxes
   salary,
   computeTax,
   computeFedTax,
-  computeQcTax
+  computeQcTax,
+  TaxReport(..),
+  afterTaxIncome,
+  incomeTaxTable
 )
 where
 
@@ -146,14 +149,21 @@ applyBrackets t x = roundTo 2 $ cata alg (taxBrackets t) (0,0)
         let acc' = acc + (limit - lowerLimit) *. rate
         in upperBrackets (acc', limit)
 
+data TaxReport = TaxReport {
+  trGrossIncome :: Income,
+  trFedIncomeTax :: Decimal,
+  trQcIncomeTax :: Decimal
+} deriving (Show, Eq)
+
+afterTaxIncome :: TaxReport -> Decimal
+afterTaxIncome (TaxReport r t1 t2) = totalIncome r - t1 -t2
+
 -- Returns the after tax amount and the taxes paid
-computeTax :: IncomeTaxInfo -> Income -> (Decimal, Decimal)
+computeTax :: IncomeTaxInfo -> Income -> TaxReport
 computeTax taxes r =
-  let total = totalIncome r
-      tFed = computeFedTax (fedTaxes taxes) r
+  let tFed = computeFedTax (fedTaxes taxes) r
       tQc = computeQcTax (qcTaxes taxes) r
-      ts = tFed + tQc
-  in (total - ts, ts)
+  in TaxReport r tFed tQc
 
 
 computeFedTax :: FederalIncomeTax -> Income -> Decimal
@@ -173,3 +183,10 @@ computeQcTax qcTax r =
       (d1, d2) = dividendCredit qcTax r
       pc = personalCredit qcTax
   in tax - d1 - d2 - pc
+
+incomeTaxTable :: IncomeTaxInfo -> [TaxReport]
+incomeTaxTable info =
+  let incomes = [x * 1000 | x <- [10..80]] -- Up to 80K
+              ++ [80000 + x * 5000 | x <- [1..21]] -- Up to 200K
+              ++ [200000 + x * 10000 | x <- [1..20]] -- Up to 400K
+  in map (computeTax info . salary) incomes
