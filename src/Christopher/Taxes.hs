@@ -40,7 +40,7 @@ data IncomeTaxInfo = Taxes {
 
 data FederalIncomeTax = FederalIncomeTax{
   fedTaxBrackets :: TaxBrackets,
-  fedBasicPersonnalAmnt :: Decimal,
+  fedBasicPersonnalAmnt :: Decimal, -- FIXME : Should be function of gross income
   fedQuebecAbatement :: Rate,
   fedCreditMultiplier :: Rate,
   fedEligibleCreditRate :: Rate,
