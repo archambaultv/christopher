@@ -168,11 +168,24 @@ computeTax taxes r =
 
 computeFedTax :: FederalIncomeTax -> Income -> Decimal
 computeFedTax fedTax r =
-  let total = totalTaxIncome fedTax r
-      tax = applyBrackets fedTax total
+  let -- Step 2, compute total income
+      totalIncome' = totalTaxIncome fedTax r
+      -- Step 3, net income
+      netIncome = totalIncome'
+      -- Step 4, taxable income
+      taxableIncome = netIncome
+      -- Step 5.A Federal gross income tax 
+      tax = applyBrackets fedTax taxableIncome
+      -- Step 5.B non refundable tax credit
+      nonRefundableCr = personalCredit fedTax 
+      -- Step 5.C federal net income tax
       (d1, d2) = dividendCredit fedTax r
-      pc = personalCredit fedTax 
-  in tax - d1 - d2 - pc
+      divCredit = d1 + d2
+      netTax = max 0 $ tax - nonRefundableCr - divCredit 
+      -- Step 6, Provincial tax
+      -- Step 7, Amount due
+      amntDueTax = roundTo 2 $ netTax  *. (1 - fedQuebecAbatement fedTax)
+  in amntDueTax
 
   where
 
