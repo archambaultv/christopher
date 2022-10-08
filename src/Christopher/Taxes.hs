@@ -137,7 +137,7 @@ applyBrackets t x = roundTo 2 $ cata alg (taxBrackets t) (0,0)
   where
     alg :: TaxBracketsF ((Decimal, Decimal) -> Decimal) -> ((Decimal, Decimal) -> Decimal) 
     -- We have reach the top bracket
-    alg (TopTaxBracketF rate) (acc, _) = acc + x *. rate
+    alg (TopTaxBracketF rate) (acc, lowerLimit) = acc + (x - lowerLimit) *. rate
 
     -- We have not reach the first bracket
     alg (TaxBracketF limit rate upperBrackets) (acc, lowerLimit) =
