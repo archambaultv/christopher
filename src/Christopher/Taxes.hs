@@ -78,7 +78,9 @@ data QuebecIncomeTax = QuebecIncomeTax{
   qcTaxBrackets :: TaxBrackets,
   qcBasicPersonnalAmnt :: PersonnalAmnt,
   qcCreditMultiplier :: Rate,
-  qcDividendTax :: DividendTax
+  qcDividendTax :: DividendTax,
+  qcDeductionForWorkersRate :: Rate,
+  qcDeductionForWorkersMax :: Decimal
 } deriving (Show, Eq)
 
 -- Brackets limit must be in increasing order
@@ -184,11 +186,23 @@ computeFedTax fedTax r =
 
 computeQcTax :: QuebecIncomeTax -> Income -> Decimal
 computeQcTax qcTax r =
-  let total = totalTaxIncome (qcDividendTax qcTax) r
-      tax = applyBrackets (qcTaxBrackets qcTax) total
+  let -- Step 1, compute total income
+      totalIncome' = totalTaxIncome (qcDividendTax qcTax) r
+      -- Step 2, net income
+      workerCredit = min (qcDeductionForWorkersMax qcTax) 
+                   $ (iSalary r) *. (qcDeductionForWorkersRate qcTax)
+      netIncome = totalIncome' - workerCredit
+      -- Step 3, taxable income
+      taxableIncome = netIncome
+      -- Step 4, non refundable tax credit
+      pc = personalCredit (qcBasicPersonnalAmnt qcTax) taxableIncome (qcCreditMultiplier qcTax)
+      -- Step 5, income taxes
+      tax = applyBrackets (qcTaxBrackets qcTax) taxableIncome
+      tax2 = tax - pc -- line 413
       (d1, d2) = dividendCredit (qcDividendTax qcTax) r
-      pc = personalCredit (qcBasicPersonnalAmnt qcTax) total (qcCreditMultiplier qcTax)
-  in tax - d1 - d2 - pc
+      tax3 = max 0 $ tax2 - d1 - d2 -- line 430
+      
+  in tax3
 
 incomeTaxTable :: IncomeTaxInfo -> [TaxReport]
 incomeTaxTable info =
