@@ -70,7 +70,7 @@ personnalAmount (LinearPersonnalAmnt bAmnt bInc hiAmnt hiDiv) netInc =
   else 
     let netDiff = netInc - bInc
         diffMiddle = hiDiv - netDiff
-        percent = roundTo 2 $ diffMiddle / hiDiv
+        percent = diffMiddle / hiDiv -- No rounding
         amnt = roundTo 2 $ (bAmnt - hiAmnt) * percent
     in if diffMiddle <= 0 then hiAmnt else hiAmnt + amnt
 
