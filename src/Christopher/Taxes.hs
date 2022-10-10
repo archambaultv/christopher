@@ -193,6 +193,6 @@ computeQcTax qcTax r =
 incomeTaxTable :: IncomeTaxInfo -> [TaxReport]
 incomeTaxTable info =
   let incomes = [x * 1000 | x <- [10..80]] -- Up to 80K
-              ++ [80000 + x * 5000 | x <- [1..21]] -- Up to 200K
+              ++ [80000 + x * 5000 | x <- [1..24]] -- Up to 200K
               ++ [200000 + x * 10000 | x <- [1..20]] -- Up to 400K
   in map (computeTax info . salary) incomes
