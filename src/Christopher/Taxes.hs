@@ -14,8 +14,9 @@ module Christopher.Taxes
   IncomeTaxInfo(..),
   TaxBrackets(..),
   TaxBracketsF(..),
-  IncomeTax(..),
   FederalIncomeTax(..),
+  PersonnalAmnt(..),
+  personnalAmount,
   QuebecIncomeTax(..),
   Income(..),
   salary,
@@ -40,53 +41,44 @@ data IncomeTaxInfo = Taxes {
 
 data FederalIncomeTax = FederalIncomeTax{
   fedTaxBrackets :: TaxBrackets,
-  fedBasicPersonnalAmnt :: Decimal, -- FIXME : Should be function of gross income
+  fedBasicPersonnalAmnt :: PersonnalAmnt,
   fedQuebecAbatement :: Rate,
   fedCreditMultiplier :: Rate,
-  fedEligibleCreditRate :: Rate,
-  fedEligibleDivMultiplier :: Rate,
-  fedNonEligibleCreditRate :: Rate,
-  fedNonEligibleDivMultiplier :: Rate
+  fedDividendTax :: DividendTax
 } deriving (Show, Eq)
+
+data DividendTax = DividendTax {
+  eligibleCreditRate :: Rate,
+  eligibleDivMultiplier :: Rate,
+  nonEligibleCreditRate :: Rate,
+  nonEligibleDivMultiplier :: Rate
+} deriving (Show, Eq)
+
+data PersonnalAmnt = ConstPersonnalAmnt Decimal
+                   | LinearPersonnalAmnt Decimal -- Low income amount
+                                         Decimal -- Low income threshold
+                                         Decimal -- High income min amount
+                                         Decimal -- High income divider
+  deriving (Show, Eq)
+
+personnalAmount :: PersonnalAmnt -> Decimal -> Decimal
+personnalAmount (ConstPersonnalAmnt x) _ = x
+personnalAmount (LinearPersonnalAmnt bAmnt bInc hiAmnt hiDiv) netInc =
+  if netInc < bInc
+  then bAmnt
+  else 
+    let netDiff = netInc - bInc
+        diffMiddle = hiDiv - netDiff
+        percent = roundTo 2 $ diffMiddle / hiDiv
+        amnt = roundTo 2 $ (bAmnt - hiAmnt) * percent
+    in if diffMiddle <= 0 then hiAmnt else hiAmnt + amnt
 
 data QuebecIncomeTax = QuebecIncomeTax{
   qcTaxBrackets :: TaxBrackets,
-  qcBasicPersonnalAmnt :: Decimal,
+  qcBasicPersonnalAmnt :: PersonnalAmnt,
   qcCreditMultiplier :: Rate,
-  qcEligibleCreditRate :: Rate,
-  qcEligibleDivMultiplier :: Rate,
-  qcNonEligibleCreditRate :: Rate,
-  qcNonEligibleDivMultiplier :: Rate
+  qcDividendTax :: DividendTax
 } deriving (Show, Eq)
-
--- Things that are common to both Canada and Quebec, so we can share
--- some code
-class IncomeTax a where
-  taxBrackets :: a -> TaxBrackets
-  basicPersonnalAmnt :: a -> Decimal
-  creditMultiplier :: a -> Rate
-  eligibleCreditRate :: a -> Rate
-  eligibleDivMultiplier :: a -> Rate
-  nonEligibleCreditRate :: a -> Rate
-  nonEligibleDivMultiplier :: a -> Rate
-
-instance IncomeTax QuebecIncomeTax where
-  taxBrackets = qcTaxBrackets
-  basicPersonnalAmnt = qcBasicPersonnalAmnt
-  creditMultiplier = qcCreditMultiplier
-  eligibleCreditRate = qcEligibleCreditRate
-  eligibleDivMultiplier = qcEligibleDivMultiplier
-  nonEligibleCreditRate = qcNonEligibleCreditRate
-  nonEligibleDivMultiplier = qcNonEligibleDivMultiplier
-
-instance IncomeTax FederalIncomeTax where
-  taxBrackets = fedTaxBrackets
-  basicPersonnalAmnt = fedBasicPersonnalAmnt
-  creditMultiplier = fedCreditMultiplier
-  eligibleCreditRate = fedEligibleCreditRate
-  eligibleDivMultiplier = fedEligibleDivMultiplier
-  nonEligibleCreditRate = fedNonEligibleCreditRate
-  nonEligibleDivMultiplier = fedNonEligibleDivMultiplier
 
 -- Brackets limit must be in increasing order
 data TaxBrackets
@@ -112,12 +104,12 @@ totalIncome income = iSalary income
                     + iNonEligibleDividend income
 
 -- Dividend are multiplied by their multiplier
-totalTaxIncome :: (IncomeTax a) => a -> Income -> Decimal
+totalTaxIncome ::  DividendTax -> Income -> Decimal
 totalTaxIncome t income = iSalary income + d1' + d2'
   where d1' = roundTo 2 $ (iEligibleDividend income) *. (1 + eligibleDivMultiplier t)
         d2' = roundTo 2 $ (iNonEligibleDividend income) *. (1 + nonEligibleDivMultiplier t)
 
-dividendCredit :: (IncomeTax a) => a -> Income -> (Decimal, Decimal)
+dividendCredit :: DividendTax -> Income -> (Decimal, Decimal)
 dividendCredit t income = (eligibleCredit, nonEligibleCredit)
   where
       eligibleCredit = roundTo 2 
@@ -129,11 +121,11 @@ dividendCredit t income = (eligibleCredit, nonEligibleCredit)
                         *. (1 + nonEligibleDivMultiplier t) 
                         *. (nonEligibleCreditRate t)
 
-personalCredit :: (IncomeTax a) => a -> Decimal
-personalCredit t = roundTo 2 $ basicPersonnalAmnt t *. creditMultiplier t
+personalCredit :: PersonnalAmnt -> Decimal -> Rate -> Decimal
+personalCredit t i r = roundTo 2 $ personnalAmount t i *. r
 
-applyBrackets :: (IncomeTax a) => a -> Decimal -> Decimal
-applyBrackets t x = roundTo 2 $ cata alg (taxBrackets t) (0,0)
+applyBrackets :: TaxBrackets -> Decimal -> Decimal
+applyBrackets t x = roundTo 2 $ cata alg t (0,0)
   where
     alg :: TaxBracketsF ((Decimal, Decimal) -> Decimal) -> ((Decimal, Decimal) -> Decimal) 
     -- We have reach the top bracket
@@ -169,17 +161,17 @@ computeTax taxes r =
 computeFedTax :: FederalIncomeTax -> Income -> Decimal
 computeFedTax fedTax r =
   let -- Step 2, compute total income
-      totalIncome' = totalTaxIncome fedTax r
+      totalIncome' = totalTaxIncome (fedDividendTax fedTax) r
       -- Step 3, net income
       netIncome = totalIncome'
       -- Step 4, taxable income
       taxableIncome = netIncome
       -- Step 5.A Federal gross income tax 
-      tax = applyBrackets fedTax taxableIncome
+      tax = applyBrackets (fedTaxBrackets fedTax) taxableIncome
       -- Step 5.B non refundable tax credit
-      nonRefundableCr = personalCredit fedTax 
+      nonRefundableCr = personalCredit (fedBasicPersonnalAmnt fedTax) taxableIncome (fedCreditMultiplier fedTax) 
       -- Step 5.C federal net income tax
-      (d1, d2) = dividendCredit fedTax r
+      (d1, d2) = dividendCredit (fedDividendTax fedTax) r
       divCredit = d1 + d2
       netTax = max 0 $ tax - nonRefundableCr - divCredit 
       -- Step 6, Provincial tax
@@ -191,10 +183,10 @@ computeFedTax fedTax r =
 
 computeQcTax :: QuebecIncomeTax -> Income -> Decimal
 computeQcTax qcTax r =
-  let total = totalTaxIncome qcTax r
-      tax = applyBrackets qcTax total
-      (d1, d2) = dividendCredit qcTax r
-      pc = personalCredit qcTax
+  let total = totalTaxIncome (qcDividendTax qcTax) r
+      tax = applyBrackets (qcTaxBrackets qcTax) total
+      (d1, d2) = dividendCredit (qcDividendTax qcTax) r
+      pc = personalCredit (qcBasicPersonnalAmnt qcTax) total (qcCreditMultiplier qcTax)
   in tax - d1 - d2 - pc
 
 incomeTaxTable :: IncomeTaxInfo -> [TaxReport]
