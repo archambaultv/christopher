@@ -10,22 +10,35 @@
 
 module Christopher.Markets
 (
-  AccountType(..),
-  Asset(..),
-  Rate
+  Assets(..),
+  MarketInput,
+  Rate,
+  simulateMarket,
+  marketPnl
 )
 where
 
 import Data.Decimal
 
-data AccountType 
-  = RRSP -- REER
-  | TFSA -- CELI
-  deriving (Show, Eq)
-
-data Asset = Asset {
-  aType :: AccountType,
-  aBalance :: Decimal
+-- For the purposes of financial planning, three types of financial account
+-- exists. We can invest in each of them.
+data Assets = Assets {
+  aRrsp :: Decimal,
+  aTfsa :: Decimal,
+  aNonRegistered :: Decimal
 } deriving (Show, Eq)
 
 type Rate = Rational
+type MarketInput = Rate
+
+simulateMarket :: MarketInput -> Assets -> Assets
+simulateMarket r a = 
+  let newRrsp = roundTo 2 (aRrsp a *. (1 + r))
+      newTfsa = roundTo 2 (aTfsa a *. (1 + r))
+      newNonRegistered = roundTo 2 (aNonRegistered a *. (1 + r))
+  in Assets newRrsp newTfsa newNonRegistered
+
+marketPnl :: Assets -> Assets -> Assets
+marketPnl a b = Assets (aRrsp b - aRrsp a)
+                       (aTfsa b - aTfsa a)
+                       (aNonRegistered b - aNonRegistered a)

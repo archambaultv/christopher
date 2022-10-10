@@ -25,6 +25,7 @@ module Christopher.Taxes
   computeFedTax,
   computeQcTax,
   TaxReport(..),
+  TaxReportInput(..),
   afterTaxIncome,
   incomeTaxTable
 )
@@ -91,7 +92,6 @@ data TaxBrackets
 
 makeBaseFunctor ''TaxBrackets
 
-
 data Income = Income {
   iSalary :: Decimal,
   iEligibleDividend :: Decimal, -- Determiné
@@ -145,28 +145,34 @@ applyBrackets t x = roundTo 2 $ cata alg t (0,0)
         in upperBrackets (acc', limit)
 
 data TaxReport = TaxReport {
-  trGrossIncome :: Income,
+  trTaxReportInput :: TaxReportInput,
   trFedIncomeTax :: Decimal,
   trQcIncomeTax :: Decimal
 } deriving (Show, Eq)
 
+
+data TaxReportInput = TaxReportInput {
+  tiIncome :: Income,
+  tiRRSPContrib :: Decimal
+} deriving (Show, Eq)
+
 afterTaxIncome :: TaxReport -> Decimal
-afterTaxIncome (TaxReport r t1 t2) = totalIncome r - t1 -t2
+afterTaxIncome (TaxReport r t1 t2) = totalIncome (tiIncome r) - t1 - t2 - (tiRRSPContrib r)
 
 -- Returns the after tax amount and the taxes paid
-computeTax :: IncomeTaxInfo -> Income -> TaxReport
+computeTax :: IncomeTaxInfo -> TaxReportInput -> TaxReport
 computeTax taxes r =
   let tFed = computeFedTax (fedTaxes taxes) r
       tQc = computeQcTax (qcTaxes taxes) r
   in TaxReport r tFed tQc
 
 
-computeFedTax :: FederalIncomeTax -> Income -> Decimal
+computeFedTax :: FederalIncomeTax -> TaxReportInput -> Decimal
 computeFedTax fedTax r =
   let -- Step 2, compute total income
-      totalIncome' = totalTaxIncome (fedDividendTax fedTax) r
+      totalIncome' = totalTaxIncome (fedDividendTax fedTax) (tiIncome r)
       -- Step 3, net income
-      netIncome = totalIncome'
+      netIncome = totalIncome' - (tiRRSPContrib r)
       -- Step 4, taxable income
       taxableIncome = netIncome
       -- Step 5.A Federal gross income tax 
@@ -174,7 +180,7 @@ computeFedTax fedTax r =
       -- Step 5.B non refundable tax credit
       nonRefundableCr = personalCredit (fedBasicPersonnalAmnt fedTax) taxableIncome (fedCreditMultiplier fedTax) 
       -- Step 5.C federal net income tax
-      (d1, d2) = dividendCredit (fedDividendTax fedTax) r
+      (d1, d2) = dividendCredit (fedDividendTax fedTax) (tiIncome r)
       divCredit = d1 + d2
       netTax = max 0 $ tax - nonRefundableCr - divCredit 
       -- Step 6, Provincial tax
@@ -184,15 +190,15 @@ computeFedTax fedTax r =
 
   where
 
-computeQcTax :: QuebecIncomeTax -> Income -> Decimal
+computeQcTax :: QuebecIncomeTax -> TaxReportInput -> Decimal
 computeQcTax qcTax r =
   let -- Step 1, compute total income
-      totalIncome' = totalTaxIncome (qcDividendTax qcTax) r
+      totalIncome' = totalTaxIncome (qcDividendTax qcTax) (tiIncome r)
       -- Step 2, net income
       -- workerCredit = min (qcDeductionForWorkersMax qcTax) 
       --              $ (iSalary r) *. (qcDeductionForWorkersRate qcTax)
       --  Don't compute worker's credit if we don't compute QPP, RQAP and other deduction
-      netIncome =  totalIncome' -- - workerCredit
+      netIncome =  totalIncome' - (tiRRSPContrib r)
       -- Step 3, taxable income
       taxableIncome = netIncome
       -- Step 4, non refundable tax credit
@@ -200,7 +206,7 @@ computeQcTax qcTax r =
       -- Step 5, income taxes
       tax = applyBrackets (qcTaxBrackets qcTax) taxableIncome
       tax2 = tax - pc -- line 413
-      (d1, d2) = dividendCredit (qcDividendTax qcTax) r
+      (d1, d2) = dividendCredit (qcDividendTax qcTax) (tiIncome r)
       tax3 = max 0 $ tax2 - d1 - d2 -- line 430
       
   in tax3
@@ -210,4 +216,4 @@ incomeTaxTable info =
   let incomes = [x * 1000 | x <- [10..80]] -- Up to 80K
               ++ [80000 + x * 5000 | x <- [1..24]] -- Up to 200K
               ++ [200000 + x * 10000 | x <- [1..20]] -- Up to 400K
-  in map (computeTax info . salary) incomes
+  in map (\x -> computeTax info $ TaxReportInput (salary x) 0) incomes
