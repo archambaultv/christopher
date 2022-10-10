@@ -189,9 +189,10 @@ computeQcTax qcTax r =
   let -- Step 1, compute total income
       totalIncome' = totalTaxIncome (qcDividendTax qcTax) r
       -- Step 2, net income
-      workerCredit = min (qcDeductionForWorkersMax qcTax) 
-                   $ (iSalary r) *. (qcDeductionForWorkersRate qcTax)
-      netIncome = totalIncome' - workerCredit
+      -- workerCredit = min (qcDeductionForWorkersMax qcTax) 
+      --              $ (iSalary r) *. (qcDeductionForWorkersRate qcTax)
+      --  Don't compute worker's credit if we don't compute QPP, RQAP and other deduction
+      netIncome =  totalIncome' -- - workerCredit
       -- Step 3, taxable income
       taxableIncome = netIncome
       -- Step 4, non refundable tax credit
