@@ -42,9 +42,14 @@ data YearlyInput = YearlyInput {
 
 data FinancialInput = FinancialInput {
   fiIncome :: Income, -- Before income tax
-  fiNeedForSpending :: Decimal, -- Before income tax as a salary (no dividend)
+  fiNeedForSpending :: DisposableIncome, -- Before income tax as a salary (no dividend)
   fiIncomeTaxInfo :: IncomeTaxInfo
 } deriving (Show, Eq)
+
+data DisposableIncome 
+  = DIAfterTax Decimal 
+  | DIBeforeTax Decimal -- As a salary without any dividend
+  deriving (Show, Eq)
 
 data SimulationState = SimulationState {
   ssYear :: Int,
@@ -159,7 +164,11 @@ serializeYear year age yi as =
       taxReport = computeTax taxInfo $ TaxReportInput income rrspContrib
       revDispo = afterTaxIncome $ taxReport
       cible = fiNeedForSpending $ yiFinancialInput yi
-      revDispoCible = afterTaxIncome $ computeTax taxInfo $ TaxReportInput (salary cible) 0
+      revDispoCible = case cible of
+                        DIBeforeTax x -> x
+                        DIAfterTax x -> afterTaxIncome 
+                                      $ computeTax taxInfo 
+                                      $ TaxReportInput (salary x) 0
   in
     [show year,
     show age,
