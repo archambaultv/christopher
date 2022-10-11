@@ -124,7 +124,7 @@ instance Monoid Strategy where
   mempty = doNothing
 
 instance Semigroup Strategy where
-  (Strategy n1 f1) <> (Strategy n2 f2) = Strategy (n1 ++ " >>> " ++ n2) (f1 >> f2) 
+  (Strategy n1 f1) <> (Strategy n2 f2) = Strategy (n1 ++ " >>> " ++ n2) (\fi -> f1 fi >> f2 fi) 
 
 instance Show Strategy where
   show s = show (sName s)
@@ -174,12 +174,26 @@ simulateMarket' mi = do
 
 endOfYear :: YearlyInput -> SState ()
 endOfYear yi = do
-  s <- get
+  s' <- get
+  let fi = yiFinancialInput yi
+
+  -- Update bank balance if we have more money than needed for spending
+  let nfs = toAfterTax (fiNeedForSpending fi) (fiIncomeTaxInfo fi)
+  let rrspContrib = asRRSPContrib (ssAssetsState s')
+  let tfsaContrib = asTFSAContrib (ssAssetsState s')
+  let taxInfo = fiIncomeTaxInfo $ yiFinancialInput yi
+  let taxReport = computeTax taxInfo $ TaxReportInput (fiIncome fi) rrspContrib
+  let spendable = afterTaxIncome taxReport - tfsaContrib
+  let bankContrib = spendable - nfs
+  let s = ssAddToBank s' bankContrib  -- Assuming line of credit
+  let nAssets = asAssets $ ssAssetsState s
+
+  -- Now we use s as the final state for this year
+  let as = ssAssetsState s
   -- We get older
   let nYear = ssYear s + 1
   let nAge = ssAge s + 1
   -- Compute next RRSP contribution rights
-  let fi = yiFinancialInput yi
   let mySalary = iSalary $ fiIncome $ fi
   let maxRRSP1 = maxRRSPContrib $ fiIncomeTaxInfo fi
   let maxRRSP2 = roundTo 2 $ mySalary *. (maxRRSPRate $ fiIncomeTaxInfo fi)
@@ -187,23 +201,24 @@ endOfYear yi = do
       -- Previous balance, plus this year possible contribution minus the actual contribution
   let nRRSP = if nAge > (maxRRSPAge $ fiIncomeTaxInfo fi)
               then 0
-              else (asRRSPContribRights $ ssAssetsState s) + maxRRSP' - (asRRSPContrib $ ssAssetsState s)
+              else (asRRSPContribRights $ as) + maxRRSP' - (asRRSPContrib as)
   -- Compute next Tfas contribution rights
   let maxTFSA = maxTFSAContrib $ fiIncomeTaxInfo fi
-  let nTFSA = (asTFSAContribRights $ ssAssetsState s) + maxTFSA - (asTFSAContrib $ ssAssetsState s)
+  let nTFSA = (asTFSAContribRights $ as) + maxTFSA - (asTFSAContrib as)
 
   -- Update state
-  let s1 = initialSimulationState nYear nAge (asAssets $ ssAssetsState s) nRRSP nTFSA
+  let s1 = initialSimulationState nYear nAge nAssets nRRSP nTFSA
   let olds = ssPreviousYears s
-  put s1{ssPreviousYears = (yi, ssAssetsState s) : olds}
+  put s1{ssPreviousYears = (yi, as) : olds}
   
 
 resultsToReport :: Maybe Char -> SimulationResults -> [[String]]
 resultsToReport c res =
   let yearHeader = 
-        ["Année","Age","Fond insuffisant",
-         "Revenu disponible","Revenu disponible cible",
+        ["Année","Age","Revenu disponible cible","Fond insuffisant", "Revenu insuffisant",
+         "Revenu disponible",
          "Salaire","Dividende déterminé","Dividende non déterminé", "Impôt fédéral","Impôt provincial",
+         "Contribution Banque","Valeur Banque",
          "Contribution REER","Rendement REER","Droits REER", "Valeur REER",
          "Contribution CELI","Rendement CELI","Droits CELI", "Valeur CELI",
          "Taux de rendement"]
@@ -237,14 +252,17 @@ serializeYear c year age yi as =
   in
     [show year,
     show age,
+    showDecimal revDispoCible,
+    if (aBank (asAssets as) < 0) then "VRAI" else "FAUX",
     if revDispo < revDispoCible then "VRAI" else "FAUX",
     showDecimal revDispo,
-    showDecimal revDispoCible,
     showDecimal (iSalary income),
     showDecimal (iEligibleDividend income),
     showDecimal (iNonEligibleDividend income),
     showDecimal (trFedIncomeTax taxReport),
     showDecimal (trQcIncomeTax taxReport),
+    showDecimal (asBankContrib as),
+    showDecimal (aBank $ asAssets as),
     showDecimal rrspContrib,
     showDecimal (asRRSPMarketPnl as),
     showDecimal (asRRSPContribRights as),
