@@ -14,6 +14,7 @@ module Christopher.Simulation
   SimulationInfo(..),
   SimulationResults,
   YearlyInput(..),
+  FinancialInput(..),
   SState,
   Strategy(..),
   runSimulation,
