@@ -21,6 +21,7 @@ module Christopher.Taxes
   QuebecIncomeTax(..),
   Income(..),
   DisposableIncome(..),
+  toAfterTax,
   salary,
   computeTax,
   computeFedTax,
@@ -39,7 +40,11 @@ import Christopher.Markets (Rate)
 
 data IncomeTaxInfo = Taxes {
   fedTaxes :: FederalIncomeTax,
-  qcTaxes :: QuebecIncomeTax
+  qcTaxes :: QuebecIncomeTax,
+  maxRRSPContrib :: Decimal,
+  maxRRSPRate :: Rate, -- Applies to the previous year earned income
+  maxRRSPAge :: Int,
+  maxTFSAContrib :: Decimal
 } deriving (Show, Eq)
 
 data FederalIncomeTax = FederalIncomeTax{
@@ -103,7 +108,15 @@ data DisposableIncome
   = DIAfterTax Decimal 
   | DIBeforeTax Decimal -- As a salary without any dividend
   deriving (Show, Eq)
-  
+
+toAfterTax :: DisposableIncome -> IncomeTaxInfo -> Decimal
+toAfterTax target taxInfo =
+  case target of
+    DIBeforeTax x -> afterTaxIncome 
+                      $ computeTax taxInfo 
+                      $ TaxReportInput (salary x) 0
+    DIAfterTax x -> x
+
 salary :: Decimal -> Income
 salary x = Income x 0 0
 
@@ -178,7 +191,7 @@ computeFedTax fedTax r =
   let -- Step 2, compute total income
       totalIncome' = totalTaxIncome (fedDividendTax fedTax) (tiIncome r)
       -- Step 3, net income
-      netIncome = totalIncome' - (tiRRSPContrib r)
+      netIncome = max 0 $ totalIncome' - (tiRRSPContrib r)
       -- Step 4, taxable income
       taxableIncome = netIncome
       -- Step 5.A Federal gross income tax 
@@ -204,7 +217,7 @@ computeQcTax qcTax r =
       -- workerCredit = min (qcDeductionForWorkersMax qcTax) 
       --              $ (iSalary r) *. (qcDeductionForWorkersRate qcTax)
       --  Don't compute worker's credit if we don't compute QPP, RQAP and other deduction
-      netIncome =  totalIncome' - (tiRRSPContrib r)
+      netIncome =  max 0 $ totalIncome' - (tiRRSPContrib r)
       -- Step 3, taxable income
       taxableIncome = netIncome
       -- Step 4, non refundable tax credit

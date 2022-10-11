@@ -11,6 +11,9 @@
 module Christopher.Markets
 (
   Assets(..),
+  addToRrsp,
+  addToTfsa,
+  addToBank,
   MarketInput,
   Rate,
   simulateMarket,
@@ -25,20 +28,28 @@ import Data.Decimal
 data Assets = Assets {
   aRrsp :: Decimal,
   aTfsa :: Decimal,
-  aNonRegistered :: Decimal
+  aBank :: Decimal -- Money sitting there, doing nothing
 } deriving (Show, Eq)
 
 type Rate = Rational
 type MarketInput = Rate
 
+addToRrsp :: Assets -> Decimal -> Assets
+addToRrsp (Assets rrsp a b) x = Assets (rrsp + x) a b
+
+addToTfsa :: Assets -> Decimal -> Assets
+addToTfsa(Assets a tfsa b) x = Assets a (tfsa + x) b
+
+addToBank :: Assets -> Decimal -> Assets
+addToBank(Assets a b bank) x = Assets a b (bank + x)
+
 simulateMarket :: MarketInput -> Assets -> Assets
 simulateMarket r a = 
   let newRrsp = roundTo 2 (aRrsp a *. (1 + r))
       newTfsa = roundTo 2 (aTfsa a *. (1 + r))
-      newNonRegistered = roundTo 2 (aNonRegistered a *. (1 + r))
-  in Assets newRrsp newTfsa newNonRegistered
+  in Assets newRrsp newTfsa (aBank a)
 
 marketPnl :: Assets -> Assets -> Assets
 marketPnl a b = Assets (aRrsp b - aRrsp a)
                        (aTfsa b - aTfsa a)
-                       (aNonRegistered b - aNonRegistered a)
+                       (aBank b - aBank a)
