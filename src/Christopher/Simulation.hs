@@ -46,11 +46,6 @@ data FinancialInput = FinancialInput {
   fiIncomeTaxInfo :: IncomeTaxInfo
 } deriving (Show, Eq)
 
-data DisposableIncome 
-  = DIAfterTax Decimal 
-  | DIBeforeTax Decimal -- As a salary without any dividend
-  deriving (Show, Eq)
-
 data SimulationState = SimulationState {
   ssYear :: Int,
   ssAge :: Int,

@@ -20,6 +20,7 @@ module Christopher.Taxes
   FederalIncomeTax(..),
   QuebecIncomeTax(..),
   Income(..),
+  DisposableIncome(..),
   salary,
   computeTax,
   computeFedTax,
@@ -98,6 +99,11 @@ data Income = Income {
   iNonEligibleDividend :: Decimal
 } deriving (Show, Eq)
 
+data DisposableIncome 
+  = DIAfterTax Decimal 
+  | DIBeforeTax Decimal -- As a salary without any dividend
+  deriving (Show, Eq)
+  
 salary :: Decimal -> Income
 salary x = Income x 0 0
 
