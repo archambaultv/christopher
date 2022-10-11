@@ -116,7 +116,7 @@ simulateMarket' mi = do
   let cy = ssCurrentYear s
   let a = asAssets cy
   let a2 = simulateMarket mi a
-  let pnl = marketPnl a2 a
+  let pnl = marketPnl a a2
   let cy' = cy{asAssets = a2,asRRSPMarketPnl = aRrsp pnl, asTFSAMarketPnl = aTfsa pnl}
   put s{ssCurrentYear = cy'}
 
@@ -130,8 +130,8 @@ endOfYear yi = do
   put s1{ssPreviousYear = (yi, ssCurrentYear s) : olds}
   
 
-resultsToReport :: SimulationResults -> [[String]]
-resultsToReport res =
+resultsToReport :: Maybe Char -> SimulationResults -> [[String]]
+resultsToReport c res =
   let yearHeader = 
         ["Année","Age","Fond insuffisant",
          "Revenu disponible","Revenu disponible cible",
@@ -140,19 +140,19 @@ resultsToReport res =
          "Taux de rendement"]
       finalYear = srYear res
       finalAge = srAge res
-      yearData1 = snd $ foldl' yearData ((finalYear, finalAge), []) (srData res)
+      yearData1 = snd $ foldl' (yearData c) ((finalYear, finalAge), []) (srData res)
   in yearHeader : yearData1
 
-yearData :: ((Int, Int), [[String]]) -> (YearlyInput, AssetsState) -> ((Int, Int), [[String]])
-yearData ((year, age), xs) (mi, ss) =
-  let y = year - 1
+yearData :: Maybe Char -> ((Int, Int), [[String]]) -> (YearlyInput, AssetsState) -> ((Int, Int), [[String]])
+yearData c ((year, age), xs) (yi, as) =
+  let x = serializeYear c year age yi as
+      y = year - 1
       a = age - 1
-      x = serializeYear y a mi ss
   in ((y, a), x:xs)
 
 
-serializeYear :: Int -> Int -> YearlyInput -> AssetsState -> [String]
-serializeYear year age yi as =
+serializeYear :: Maybe Char -> Int -> Int -> YearlyInput -> AssetsState -> [String]
+serializeYear c year age yi as =
   let income = fiIncome $ yiFinancialInput yi
       taxInfo = fiIncomeTaxInfo $ yiFinancialInput yi
       rrspContrib = asRRSPContrib as
@@ -161,25 +161,29 @@ serializeYear year age yi as =
       revDispo = afterTaxIncome $ taxReport
       cible = fiNeedForSpending $ yiFinancialInput yi
       revDispoCible = case cible of
-                        DIBeforeTax x -> x
-                        DIAfterTax x -> afterTaxIncome 
-                                      $ computeTax taxInfo 
-                                      $ TaxReportInput (salary x) 0
+                        DIBeforeTax x -> afterTaxIncome 
+                                         $ computeTax taxInfo 
+                                         $ TaxReportInput (salary x) 0
+                        DIAfterTax x -> x
+      showDecimal :: Decimal -> String
+      showDecimal = case c of
+                      Nothing -> show
+                      (Just c') -> map (\x -> if x == '.' then c' else x) . show
   in
     [show year,
     show age,
     if revDispo < revDispoCible then "VRAI" else "FAUX",
-    show revDispo,
-    show revDispoCible,
-    show (iSalary income),
-    show (iEligibleDividend income),
-    show (iNonEligibleDividend income),
-    show (trFedIncomeTax taxReport),
-    show (trQcIncomeTax taxReport),
-    show rrspContrib,
-    show tfsaContrib,
-    show (asRRSPMarketPnl as),
-    show (asTFSAMarketPnl as),
-    show (aRrsp $ asAssets as),
-    show (aTfsa $ asAssets as),
-    show (yiMarketInput yi)] 
+    showDecimal revDispo,
+    showDecimal revDispoCible,
+    showDecimal (iSalary income),
+    showDecimal (iEligibleDividend income),
+    showDecimal (iNonEligibleDividend income),
+    showDecimal (trFedIncomeTax taxReport),
+    showDecimal (trQcIncomeTax taxReport),
+    showDecimal rrspContrib,
+    showDecimal tfsaContrib,
+    showDecimal (asRRSPMarketPnl as),
+    showDecimal (asTFSAMarketPnl as),
+    showDecimal (aRrsp $ asAssets as),
+    showDecimal (aTfsa $ asAssets as),
+    showDecimal (fromRational $ yiMarketInput yi :: Decimal)] 
