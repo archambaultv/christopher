@@ -26,6 +26,9 @@ dependencies:
 - Decimal
 - cassava
 - bytestring
+- scientific
+- time
+- aeson
 
 ghc-options:
 - -Wall
