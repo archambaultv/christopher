@@ -12,6 +12,7 @@
 module Christopher.Taxes
 (
   IncomeTaxInfo(..),
+  sortTaxBrackets,
   TaxBrackets(..),
   DividendTax(..),
   LinearPersonnalAmnt(..),
@@ -34,13 +35,14 @@ module Christopher.Taxes
 where
 
 import GHC.Generics
+import Data.List (sortOn)
 import Data.Functor.Foldable
 import Data.Aeson (ToJSON(..), FromJSON(..), genericToEncoding, 
                    genericToJSON, genericParseJSON)
 import Christopher.Amount
 import Christopher.Internal.LabelModifier
 
-data IncomeTaxInfo = Taxes {
+data IncomeTaxInfo = IncomeTaxInfo {
   itFederalTaxes :: FederalIncomeTax,
   itQuebecTaxes :: QuebecIncomeTax
 } deriving (Show, Eq, Generic)
@@ -307,3 +309,12 @@ computeQcTax qcTax r =
       tax3 = max 0 $ tax2 - d1 - d2 -- line 430
       
   in tax3
+
+sortTaxBrackets' :: TaxBrackets -> TaxBrackets
+sortTaxBrackets' (TaxBrackets x xs) = TaxBrackets x (sortOn tbAbove xs)
+
+sortTaxBrackets :: IncomeTaxInfo -> IncomeTaxInfo
+sortTaxBrackets (IncomeTaxInfo f q) =
+  let ftb' = sortTaxBrackets' $ fedTaxBrackets f
+      qtb' = sortTaxBrackets' $ qcTaxBrackets q
+  in IncomeTaxInfo f{fedTaxBrackets = ftb'} q{qcTaxBrackets = qtb'}

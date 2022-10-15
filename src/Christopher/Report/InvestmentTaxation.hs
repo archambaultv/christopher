@@ -79,7 +79,7 @@ rrspTaxation :: InvestmentTaxation -> (Amount, Rate)
 rrspTaxation invTax =
   let r = itMarketRate invTax
       years = itYears invTax
-      taxInfo = itIncomeTax invTax
+      taxInfo = sortTaxBrackets $ itIncomeTax invTax
 
       initialAmount = itAmount invTax
 
@@ -96,7 +96,7 @@ tfsaTaxation :: InvestmentTaxation -> (Amount, Rate)
 tfsaTaxation invTax =
   let r = itMarketRate invTax
       years = itYears invTax
-      taxInfo = itIncomeTax invTax
+      taxInfo = sortTaxBrackets $ itIncomeTax invTax
       
       initialTaxInput1 = TaxReportInput (itInitialIncome invTax) 0
       initialAmount1 = afterTaxIncome $ computeTax taxInfo initialTaxInput1

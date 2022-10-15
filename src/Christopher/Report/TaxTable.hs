@@ -105,8 +105,9 @@ taxTable info =
   let incomes = [x * 1000 | x <- [10..80]] -- Up to 80K
               ++ [80000 + x * 5000 | x <- [1..24]] -- Up to 200K
               ++ [200000 + x * 10000 | x <- [1..20]] -- Up to 400K
-  in map (\x -> reportToTableRow (computeTax info $ TaxReportInput (salary x) 0,
-                                  computeTax info $ TaxReportInput (salary (x + marginalSpan)) 0)) 
+      info' = sortTaxBrackets info
+  in map (\x -> reportToTableRow (computeTax info' $ TaxReportInput (salary x) 0,
+                                  computeTax info' $ TaxReportInput (salary (x + marginalSpan)) 0)) 
      incomes
 
 reportToTableRow :: (TaxReport, TaxReport) -> TaxTableRow
