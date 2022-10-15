@@ -32,24 +32,38 @@ import Data.Scientific (Scientific)
 import Data.Decimal (Decimal)
 import qualified Data.Decimal as D
 import Data.Aeson (ToJSON(..), FromJSON(..))
+import Data.Csv (ToField(..), FromField(..))
 
 newtype Amount = Amount Decimal
   deriving (Eq, Ord, Enum, Show, Read, Num, Fractional, Real, RealFrac)
 
 instance ToJSON Amount where
-  toJSON x = toJSON (toScientific x)
-  toEncoding x = toEncoding (toScientific x)
+  toJSON = toJSON . toScientific
+  toEncoding = toEncoding . toScientific
 
 instance FromJSON Amount where
-    parseJSON = \v -> fmap fromScientific (parseJSON v)
+    parseJSON = fmap fromScientific . parseJSON
 
-type Rate = Rational
+instance ToField Amount where
+  toField = toField . toScientific
+
+instance FromField Amount where
+  parseField = fmap fromScientific . parseField
+
+newtype Rate = Rate Rational
+  deriving (Eq, Ord, Enum, Show, Read, Num, Fractional, ToJSON, FromJSON)
+
+instance ToField Rate where
+  toField = toField . toScientificR
+
+instance FromField Rate where
+  parseField = fmap fromScientificR . parseField
 
 roundTo :: Word8 -> Amount -> Amount
 roundTo i (Amount x) = Amount (D.roundTo i x)
 
 (*.) :: Amount -> Rate -> Amount
-(*.) (Amount x) r = Amount $ x D.*. r
+(*.) (Amount x) (Rate r) = Amount $ x D.*. r
 
 fromScientific :: Scientific -> Amount
 fromScientific = fromRational . toRational
@@ -58,13 +72,13 @@ toScientific :: Amount -> Scientific
 toScientific = fromRational . toRational
 
 toRate :: Amount -> Rate
-toRate = toRational
+toRate = Rate . toRational
 
 fromScientificR :: Scientific -> Rate
-fromScientificR = toRational
+fromScientificR = Rate . toRational
 
 toScientificR :: Rate -> Scientific
-toScientificR = fromRational 
+toScientificR (Rate x)= fromRational x
 
 -- | Formats a number for reporting
 showAmount :: Char -> Amount -> String

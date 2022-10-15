@@ -1,7 +1,7 @@
 {-# LANGUAGE DeriveGeneric #-}
 
 -- |
--- Module      :  Christopher.InvestmentTaxation
+-- Module      :  Christopher.Report.InvestmentTaxation
 -- Copyright   :  © 2022 Vincent Archambault
 -- License     :  MIT
 --
@@ -10,27 +10,22 @@
 --
 -- This module defines some functions to simulate the impact of fiscal policy on investment
 
-module Christopher.InvestmentTaxation(
+module Christopher.Report.InvestmentTaxation(
   InvestmentTaxation(..),
   itInflationRate,
   itFinalIncome,
-  InvestmentTaxationResult(..),
-  InvestmentTaxation,
+  investmentTaxation,
+  InvestmentTaxationResult(..)
 )
 where
 
-import Data.Char (toLower, isUpper)
-import Data.Functor.Foldable (ListF(..), ana)
-import Data.Scientific (Scientific)
-import Data.List (intercalate)
 import GHC.Generics
-import Data.Aeson (ToJSON(..), FromJSON(..), Options(..),toEncoding, genericToEncoding, 
+import Data.Aeson (ToJSON(..), FromJSON(..), genericToEncoding, 
                    genericToJSON, genericParseJSON)
 import Christopher.Taxes
 import Christopher.Amount
-import Christopher.Utils
+import Christopher.Internal.LabelModifier
 
--- The input as defined in the JSON/YAML file
 data InvestmentTaxation = InvestmentTaxation {
   itAmount :: Amount,
   itYears :: Int,
@@ -51,13 +46,12 @@ instance FromJSON InvestmentTaxation where
 itInflationRate  :: InvestmentTaxation -> Rate
 itInflationRate x = case (itmaybeInflationRate x) of
                       Nothing -> 0
-                      Just x -> x
+                      Just y -> y
 
 itFinalIncome :: InvestmentTaxation -> Income
 itFinalIncome x = case (itmaybeFinalIncome x) of 
                     Nothing -> itInitialIncome x
-                    Just x -> x
-
+                    Just y -> y
 
 data InvestmentTaxationResult = InvestmentTaxationResult {
   itRRSP :: (Amount, Rate),

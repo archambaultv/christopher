@@ -29,6 +29,9 @@ dependencies:
 - scientific
 - time
 - aeson
+- yaml
+- filepath
+- optparse-applicative
 
 ghc-options:
 - -Wall

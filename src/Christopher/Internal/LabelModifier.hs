@@ -1,28 +1,34 @@
 -- |
--- Module      :  Christopher.Utils
+-- Module      :  Christopher.Internal.LabelModifier
 -- Copyright   :  © 2022 Vincent Archambault
 -- License     :  MIT
 --
 -- Maintainer  :  Vincent Archambault <vincentarchambault@icloud.com>
 -- Stability   :  experimental
 --
--- This module defines some helper functions
+-- This module defines some helper functions for the JSON format and CSV format
 
-module Christopher.Utils(
+module Christopher.Internal.LabelModifier(
   jsonOptions,
-
+  csvOptions
 )
 where
 
 import Data.List (intercalate)
 import Data.Functor.Foldable (ana, ListF(..))
 import Data.Char (toLower, isUpper)
-import Data.Aeson (defaultOptions, Options(..))
+import qualified Data.Aeson as A
+import qualified Data.Csv as C
 
-jsonOptions :: Options
-jsonOptions = defaultOptions{
-  fieldLabelModifier = fieldName,
-  omitNothingFields = True
+jsonOptions :: A.Options
+jsonOptions = A.defaultOptions{
+  A.fieldLabelModifier = fieldName,
+  A.omitNothingFields = True
+}
+
+csvOptions :: C.Options
+csvOptions = C.defaultOptions{
+  C.fieldLabelModifier = fieldName
 }
 
 fieldName :: String -> String

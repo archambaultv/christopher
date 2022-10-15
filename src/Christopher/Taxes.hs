@@ -13,7 +13,6 @@ module Christopher.Taxes
 (
   IncomeTaxInfo(..),
   TaxBrackets(..),
-  TaxBracketsF(..),
   DividendTax(..),
   LinearPersonnalAmnt(..),
   personnalAmount,
@@ -35,11 +34,10 @@ where
 
 import GHC.Generics
 import Data.Functor.Foldable
-import Data.Functor.Foldable.TH (makeBaseFunctor)
 import Data.Aeson (ToJSON(..), FromJSON(..), genericToEncoding, 
                    genericToJSON, genericParseJSON)
 import Christopher.Amount
-import Christopher.Utils
+import Christopher.Internal.LabelModifier
 
 data IncomeTaxInfo = Taxes {
   fedTaxes :: FederalIncomeTax,
@@ -126,28 +124,30 @@ personnalAmount (LinearPersonnalAmnt maxAmnt maxLimit minAmnt minLimit) netInc =
             in minAmnt + amnt
 
 -- Brackets limit must be in increasing order
-data TaxBrackets
-  = TopTaxBracket Rate -- Anything above
-  | TaxBracket Amount Rate TaxBrackets -- Applies to any amount below or equal to this one
+data TaxBrackets = TaxBrackets {
+  tbBaseRate :: Rate,
+  tbBrackets :: [TaxBracket]
+} deriving (Eq, Show, Generic)
+
+data TaxBracket = TaxBracket {
+  tbAbove :: Amount,
+  tbRate :: Rate
+}
  deriving (Show, Eq, Generic)
 
-makeBaseFunctor ''TaxBrackets
-
-data TaxBracket = 
-
 instance ToJSON TaxBrackets where
-  toJSON (TopTaxBracket r) =
-    Array $ V.Vector (object ["top bracket rate" .= r])
-  toJSON (TaxBracket amnt r xs) = 
-    object $ ["less than" .= amnt, "rate" .= r]
-
-  toEncoding (TopTaxBracket r) = 
-    pairs $ "top bracket rate" .= r
-  toEncoding (TaxBracket amnt r xs) = 
-    pairs $ "less than" .= amnt <> "rate" .= r
+  toJSON = genericToJSON jsonOptions
+  toEncoding = genericToEncoding jsonOptions
 
 instance FromJSON TaxBrackets where
-  parseJSON = \v -> fmap tbFromList (parseJSON v)
+  parseJSON = genericParseJSON jsonOptions
+
+instance ToJSON TaxBracket where
+  toJSON = genericToJSON jsonOptions
+  toEncoding = genericToEncoding jsonOptions
+
+instance FromJSON TaxBracket where
+  parseJSON = genericParseJSON jsonOptions
 
 data Income = Income {
   iSalary :: Amount,
@@ -210,21 +210,20 @@ dividendCredit t income = (eligibleCredit, nonEligibleCredit)
                         *. (nonEligibleCreditRate t)
 
 applyBrackets :: TaxBrackets -> Amount -> Amount
-applyBrackets t x = roundTo 2 $ cata alg t (0,0)
+applyBrackets (TaxBrackets baseRate brackets) x = para alg (TaxBracket 0 baseRate : brackets) 0
   where
-    alg :: TaxBracketsF ((Amount, Amount) -> Amount) -> ((Amount, Amount) -> Amount) 
-    -- We have reach the top bracket
-    alg (TopTaxBracketF rate) (acc, lowerLimit) = acc + (x - lowerLimit) *. rate
-
-    -- We have not reach the first bracket
-    alg (TaxBracketF limit rate upperBrackets) (acc, lowerLimit) =
-      if x < limit
+    alg :: ListF TaxBracket ([TaxBracket], Amount -> Amount) -> (Amount -> Amount) 
+    alg Nil acc = acc
+    alg (Cons (TaxBracket limit rate) ([], _)) acc = 
+      roundTo 2 $ acc + (x - limit) *. rate
+    alg (Cons (TaxBracket limit rate) ((TaxBracket nextLimit _ : _), next)) acc =
+      if x <= nextLimit
       then -- This bracket if the final stop
-           acc + (x - lowerLimit) *. rate
+           roundTo 2 $ acc + (x - limit) *. rate
       else  
            -- Compute this bracket and move on to the next
-        let acc' = acc + (limit - lowerLimit) *. rate
-        in upperBrackets (acc', limit)
+        let acc' = roundTo 2 $ acc + (nextLimit - limit) *. rate
+        in next acc'
 
 data TaxReport = TaxReport {
   trTaxReportInput :: TaxReportInput,

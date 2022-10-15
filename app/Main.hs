@@ -10,7 +10,7 @@
 
 module Main (main) where
 
-import Christopher.Cli
+import Christopher.Cli.Cli
 
 main :: IO ()
 main = cli

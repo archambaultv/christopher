@@ -21,18 +21,32 @@ import Christopher.Cli.Command
 inputFile :: Parser String
 inputFile = argument str (metavar "INPUT-FILE" <> help "The input file in JSON or YAML format.")
 
-InvestmentTaxation :: Parser Command
-InvestmentTaxation = CInvestmentTaxation
+outputFile :: Parser String
+outputFile = argument str (metavar "CSV-FILE" <> help "The output file in CSV format.")
+
+investmentTaxation :: Parser Command
+investmentTaxation = CInvestmentTaxation
                    <$> inputFile
 
-InvestmentTaxation :: ParserInfo Command
-InvestmentTaxation = info (InvestmentTaxation <**> helper)
+investmentTaxationInfo :: ParserInfo Command
+investmentTaxationInfo = info (investmentTaxation <**> helper)
               (fullDesc
-               <> progDesc "Computes the effective fiscal rate according to the parameters in the INPUT-FILE.")
+               <> progDesc "Computes the effective taxation of various investments according to the parameters in the INPUT-FILE.")
+
+taxTable :: Parser Command
+taxTable = CTaxTable
+        <$> inputFile
+        <*> optional outputFile
+
+taxTableInfo :: ParserInfo Command
+taxTableInfo = info (taxTable <**> helper)
+              (fullDesc
+               <> progDesc "Computes the tax table according to the parameters in the INPUT-FILE.")
 
 parseCommand :: Parser Command
 parseCommand = subparser
-  ( command "investment-taxation" InvestmentTaxation
+  ( command "investment-taxation" investmentTaxationInfo <>
+    command "tax-table" taxTableInfo
   )
 
 opts :: ParserInfo Command

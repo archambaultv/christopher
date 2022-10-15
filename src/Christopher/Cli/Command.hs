@@ -14,38 +14,36 @@ module Christopher.Cli.Command
   runCommand
 ) where
 
-import Control.Monad (unless)
-import Control.Monad.Except (runExceptT, ExceptT(..), lift, liftEither)
+import Control.Monad.Except (runExceptT, ExceptT(..), lift)
 import qualified Data.Yaml as Yaml
-import qualified Data.Csv as Csv
-import qualified Data.Yaml.Pretty as YamlP
 import qualified Data.Aeson as JSON
-import qualified Data.Aeson.Encode.Pretty as JSONP
-import qualified Data.ByteString.Lazy as BL
-import qualified Data.ByteString as BS
-import qualified Data.Text as T
-import qualified Data.Vector as V
-import qualified Data.HashMap.Strict as HM
-import Data.Char (ord)
-import Data.List (sortOn, intercalate)
-import Christopher.Taxes
-import Christopher.InvestmentTaxation
 import Data.Char (toLower)
 import System.FilePath (takeExtension)
+import Christopher.Report.InvestmentTaxation
+import Christopher.Report.TaxTable
+import Christopher.Csv
 
 -- | The commands accepted by the command line interface
 data Command = CInvestmentTaxation FilePath
+             | CTaxTable FilePath (Maybe FilePath)
 
 -- | How to execute the CLI commands
 runCommand :: Command -> IO ()
 runCommand c = runExceptT (runCommand' c) >>= either putStrLn return
 
 runCommand' :: Command -> ExceptT String IO ()
-runCommand' (CInvestmentTaxation inputPath) = 
+runCommand' (CInvestmentTaxation inputPath) = do
   input <- decodeFileByExt inputPath
-  let report = InvestmentTaxation input
-  writeToCsv reportPath defaultCsvParam report
+  let report = investmentTaxation input
+  lift $ putStrLn $ show report
+  -- writeToCsv reportPath defaultCsvParam report
 
+runCommand' (CTaxTable inputPath outputPath) = do
+  input <- decodeFileByExt inputPath
+  let report = taxTable input
+  case outputPath of
+    Nothing -> lift $ putStrLn $ show report
+    (Just p) -> lift $ writeToCsv p defaultCsvParam report
 
 -- Decodes with pure JSON for .json file. Any other extension is decoded with in
 -- YAML
@@ -54,11 +52,3 @@ decodeFileByExt path  = ExceptT $
   case map toLower (takeExtension path) of
     ".json" -> JSON.eitherDecodeFileStrict' path
     _ -> fmap (either (Left . show) return) $ Yaml.decodeFileEither path
-
--- Write
-writeReport :: FilePath -> Report -> ExceptT String IO ()
-writeReport reportPath journal report = do
-  let csvSep = ocsvCsvSeparator $ jCsvOutputParams journal
-  let maybeBom = if ocsvAddBom $ jCsvOutputParams journal then bom else ""
-  lift $ BL.writeFile reportPath
-       $ BL.concat [maybeBom, encodeReportToCsv csvSep report]
