@@ -1,4 +1,4 @@
-{-# LANGUAGE DeriveFunctor, DeriveFoldable, DeriveTraversable, TemplateHaskell, TypeFamilies #-}
+{-# LANGUAGE DeriveGeneric, DeriveFunctor, DeriveFoldable, DeriveTraversable, TemplateHaskell, TypeFamilies #-}
 -- |
 -- Module      :  Christopher.Taxes
 -- Copyright   :  © 2022 Vincent Archambault
@@ -13,9 +13,8 @@ module Christopher.Taxes
 (
   IncomeTaxInfo(..),
   TaxBrackets(..),
-  TaxBracketsF(..),
   DividendTax(..),
-  PersonnalAmnt(..),
+  LinearPersonnalAmnt(..),
   personnalAmount,
   FederalIncomeTax(..),
   QuebecIncomeTax(..),
@@ -28,88 +27,152 @@ module Christopher.Taxes
   computeQcTax,
   TaxReport(..),
   TaxReportInput(..),
-  afterTaxIncome,
-  incomeTaxTable
+  afterTaxIncome
 )
 where
 
-import Data.Decimal
+import GHC.Generics
 import Data.Functor.Foldable
-import Data.Functor.Foldable.TH (makeBaseFunctor)
-import Christopher.Markets (Rate)
+import Data.Aeson (ToJSON(..), FromJSON(..), genericToEncoding, 
+                   genericToJSON, genericParseJSON)
+import Christopher.Amount
+import Christopher.Internal.LabelModifier
 
 data IncomeTaxInfo = Taxes {
-  fedTaxes :: FederalIncomeTax,
-  qcTaxes :: QuebecIncomeTax,
-  maxRRSPContrib :: Decimal,
-  maxRRSPRate :: Rate, -- Applies to the previous year earned income
-  maxRRSPAge :: Int,
-  maxTFSAContrib :: Decimal
-} deriving (Show, Eq)
+  itFederalTaxes :: FederalIncomeTax,
+  itQuebecTaxes :: QuebecIncomeTax
+} deriving (Show, Eq, Generic)
+
+instance ToJSON IncomeTaxInfo where
+  toJSON = genericToJSON jsonOptions
+  toEncoding = genericToEncoding jsonOptions
+
+instance FromJSON IncomeTaxInfo where
+  parseJSON = genericParseJSON jsonOptions
 
 data FederalIncomeTax = FederalIncomeTax{
   fedTaxBrackets :: TaxBrackets,
-  fedBasicPersonnalAmnt :: PersonnalAmnt,
+  fedBasicPersonnalAmount :: LinearPersonnalAmnt,
   fedQuebecAbatement :: Rate,
-  fedCreditMultiplier :: Rate,
+  fedNonRefundableTaxCreditsRate :: Rate,
   fedDividendTax :: DividendTax
-} deriving (Show, Eq)
+} deriving (Show, Eq, Generic)
 
-data DividendTax = DividendTax {
-  eligibleCreditRate :: Rate,
-  eligibleDivMultiplier :: Rate,
-  nonEligibleCreditRate :: Rate,
-  nonEligibleDivMultiplier :: Rate
-} deriving (Show, Eq)
+instance ToJSON FederalIncomeTax where
+  toJSON = genericToJSON jsonOptions
+  toEncoding = genericToEncoding jsonOptions
 
-data PersonnalAmnt = ConstPersonnalAmnt Decimal
-                   | LinearPersonnalAmnt Decimal -- Low income amount
-                                         Decimal -- Low income threshold
-                                         Decimal -- High income min amount
-                                         Decimal -- High income divider
-  deriving (Show, Eq)
-
-personnalAmount :: PersonnalAmnt -> Decimal -> Decimal
-personnalAmount (ConstPersonnalAmnt x) _ = x
-personnalAmount (LinearPersonnalAmnt bAmnt bInc hiAmnt hiDiv) netInc =
-  if netInc < bInc
-  then bAmnt
-  else 
-    let netDiff = netInc - bInc
-        diffMiddle = hiDiv - netDiff
-        percent = diffMiddle / hiDiv -- No rounding
-        amnt = roundTo 2 $ (bAmnt - hiAmnt) * percent
-    in if diffMiddle <= 0 then hiAmnt else hiAmnt + amnt
+instance FromJSON FederalIncomeTax where
+  parseJSON = genericParseJSON jsonOptions
 
 data QuebecIncomeTax = QuebecIncomeTax{
   qcTaxBrackets :: TaxBrackets,
-  qcBasicPersonnalAmnt :: PersonnalAmnt,
-  qcCreditMultiplier :: Rate,
-  qcDividendTax :: DividendTax,
-  qcDeductionForWorkersRate :: Rate,
-  qcDeductionForWorkersMax :: Decimal
-} deriving (Show, Eq)
+  qcBasicPersonnalAmount :: Amount,
+  qcNonRefundableTaxCreditsRate :: Rate,
+  qcDividendTax :: DividendTax
+} deriving (Show, Eq, Generic)
+
+instance ToJSON QuebecIncomeTax where
+  toJSON = genericToJSON jsonOptions
+  toEncoding = genericToEncoding jsonOptions
+
+instance FromJSON QuebecIncomeTax where
+  parseJSON = genericParseJSON jsonOptions
+
+data DividendTax = DividendTax {
+  dtEligibleCreditRate :: Rate,
+  dtEligibleMultiplier :: Rate,
+  dtNonEligibleCreditRate :: Rate,
+  dtNonEligibleMultiplier :: Rate
+} deriving (Show, Eq, Generic)
+
+instance ToJSON DividendTax where
+  toJSON = genericToJSON jsonOptions
+  toEncoding = genericToEncoding jsonOptions
+
+instance FromJSON DividendTax where
+  parseJSON = genericParseJSON jsonOptions
+
+data LinearPersonnalAmnt  = LinearPersonnalAmnt {
+  lpaMaximumAmount :: Amount,
+  lpaMaximumThreshold :: Amount,
+  lpaMinimumAmount :: Amount,
+  lpaMinimumThreshold :: Amount
+}
+  deriving (Show, Eq, Generic)
+
+instance ToJSON LinearPersonnalAmnt where
+  toJSON = genericToJSON jsonOptions
+  toEncoding = genericToEncoding jsonOptions
+
+instance FromJSON LinearPersonnalAmnt where
+  parseJSON = genericParseJSON jsonOptions
+
+personnalAmount :: LinearPersonnalAmnt -> Amount -> Amount
+personnalAmount (LinearPersonnalAmnt maxAmnt maxLimit minAmnt minLimit) netInc =
+  if netInc <= maxLimit
+  then maxAmnt
+  else if netInc >= minLimit
+       then minAmnt
+       else let span' = maxLimit - minLimit
+                diff = maxLimit - netInc
+                percent = diff / span' -- No rounding
+                amnt = roundTo 2 $ (maxAmnt - minAmnt) * percent
+            in minAmnt + amnt
 
 -- Brackets limit must be in increasing order
-data TaxBrackets
-  = TopTaxBracket Rate -- Anything above
-  | TaxBracket Decimal Rate TaxBrackets -- Applies to any amount below or equal to this one
- deriving (Show, Eq)
+data TaxBrackets = TaxBrackets {
+  tbBaseRate :: Rate,
+  tbBrackets :: [TaxBracket]
+} deriving (Eq, Show, Generic)
 
-makeBaseFunctor ''TaxBrackets
+data TaxBracket = TaxBracket {
+  tbAbove :: Amount,
+  tbRate :: Rate
+}
+ deriving (Show, Eq, Generic)
+
+instance ToJSON TaxBrackets where
+  toJSON = genericToJSON jsonOptions
+  toEncoding = genericToEncoding jsonOptions
+
+instance FromJSON TaxBrackets where
+  parseJSON = genericParseJSON jsonOptions
+
+instance ToJSON TaxBracket where
+  toJSON = genericToJSON jsonOptions
+  toEncoding = genericToEncoding jsonOptions
+
+instance FromJSON TaxBracket where
+  parseJSON = genericParseJSON jsonOptions
 
 data Income = Income {
-  iSalary :: Decimal,
-  iEligibleDividend :: Decimal, -- Determiné
-  iNonEligibleDividend :: Decimal
-} deriving (Show, Eq)
+  iSalary :: Amount,
+  iEligibleDividend :: Amount, -- Determiné
+  iNonEligibleDividend :: Amount
+} deriving (Show, Eq, Generic)
+
+instance ToJSON Income where
+  toJSON = genericToJSON jsonOptions
+  toEncoding = genericToEncoding jsonOptions
+
+instance FromJSON Income where
+  parseJSON = genericParseJSON jsonOptions
+
+instance Semigroup Income where
+  i1 <> i2 = Income (iSalary i1 + iSalary i2)
+                    (iEligibleDividend i1 + iEligibleDividend i2)
+                    (iNonEligibleDividend i1 + iNonEligibleDividend i2)
+
+instance Monoid Income where
+  mempty = Income 0 0 0
 
 data DisposableIncome 
-  = DIAfterTax Decimal 
-  | DIBeforeTax Decimal -- As a salary without any dividend
+  = DIAfterTax Amount 
+  | DIBeforeTax Amount -- As a salary without any dividend
   deriving (Show, Eq)
 
-toAfterTax :: DisposableIncome -> IncomeTaxInfo -> Decimal
+toAfterTax :: DisposableIncome -> IncomeTaxInfo -> Amount
 toAfterTax target taxInfo =
   case target of
     DIBeforeTax x -> afterTaxIncome 
@@ -117,76 +180,72 @@ toAfterTax target taxInfo =
                       $ TaxReportInput (salary x) 0
     DIAfterTax x -> x
 
-salary :: Decimal -> Income
+salary :: Amount -> Income
 salary x = Income x 0 0
 
-totalIncome :: Income -> Decimal
+totalIncome :: Income -> Amount
 totalIncome income = iSalary income 
                     + iEligibleDividend income
                     + iNonEligibleDividend income
 
 -- Dividend are multiplied by their multiplier
-totalTaxIncome ::  DividendTax -> Income -> Decimal
+totalTaxIncome ::  DividendTax -> Income -> Amount
 totalTaxIncome t income = iSalary income + d1' + d2'
-  where d1' = roundTo 2 $ (iEligibleDividend income) *. (1 + eligibleDivMultiplier t)
-        d2' = roundTo 2 $ (iNonEligibleDividend income) *. (1 + nonEligibleDivMultiplier t)
+  where d1' = roundTo 2 $ (iEligibleDividend income) *. (1 + dtEligibleMultiplier t)
+        d2' = roundTo 2 $ (iNonEligibleDividend income) *. (1 + dtNonEligibleMultiplier t)
 
-dividendCredit :: DividendTax -> Income -> (Decimal, Decimal)
+dividendCredit :: DividendTax -> Income -> (Amount, Amount)
 dividendCredit t income = (eligibleCredit, nonEligibleCredit)
   where
       eligibleCredit = roundTo 2 
                      $ (iEligibleDividend income) 
-                     *. (1 + eligibleDivMultiplier t) 
-                     *. (eligibleCreditRate t)
+                     *. (1 + dtEligibleMultiplier t) 
+                     *. (dtEligibleCreditRate t)
       nonEligibleCredit = roundTo 2 
                         $ (iNonEligibleDividend income) 
-                        *. (1 + nonEligibleDivMultiplier t) 
-                        *. (nonEligibleCreditRate t)
+                        *. (1 + dtNonEligibleMultiplier t) 
+                        *. (dtNonEligibleCreditRate t)
 
-personalCredit :: PersonnalAmnt -> Decimal -> Rate -> Decimal
-personalCredit t i r = roundTo 2 $ personnalAmount t i *. r
-
-applyBrackets :: TaxBrackets -> Decimal -> Decimal
-applyBrackets t x = roundTo 2 $ cata alg t (0,0)
+applyBrackets :: TaxBrackets -> Amount -> Amount
+applyBrackets (TaxBrackets baseRate brackets) x = para alg (TaxBracket 0 baseRate : brackets) 0
   where
-    alg :: TaxBracketsF ((Decimal, Decimal) -> Decimal) -> ((Decimal, Decimal) -> Decimal) 
-    -- We have reach the top bracket
-    alg (TopTaxBracketF rate) (acc, lowerLimit) = acc + (x - lowerLimit) *. rate
-
-    -- We have not reach the first bracket
-    alg (TaxBracketF limit rate upperBrackets) (acc, lowerLimit) =
-      if x < limit
+    alg :: ListF TaxBracket ([TaxBracket], Amount -> Amount) -> (Amount -> Amount) 
+    alg Nil acc = acc
+    alg (Cons (TaxBracket limit rate) ([], _)) acc = 
+      roundTo 2 $ acc + (x - limit) *. rate
+    alg (Cons (TaxBracket limit rate) ((TaxBracket nextLimit _ : _), next)) acc =
+      if x <= nextLimit
       then -- This bracket if the final stop
-           acc + (x - lowerLimit) *. rate
+           roundTo 2 $ acc + (x - limit) *. rate
       else  
            -- Compute this bracket and move on to the next
-        let acc' = acc + (limit - lowerLimit) *. rate
-        in upperBrackets (acc', limit)
+        let acc' = roundTo 2 $ acc + (nextLimit - limit) *. rate
+        in next acc'
 
 data TaxReport = TaxReport {
   trTaxReportInput :: TaxReportInput,
-  trFedIncomeTax :: Decimal,
-  trQcIncomeTax :: Decimal
+  trFedIncomeTax :: Amount,
+  trQcIncomeTax :: Amount
 } deriving (Show, Eq)
 
 
 data TaxReportInput = TaxReportInput {
   tiIncome :: Income,
-  tiRRSPContrib :: Decimal
+  tiRRSPContrib :: Amount
 } deriving (Show, Eq)
 
-afterTaxIncome :: TaxReport -> Decimal
+afterTaxIncome :: TaxReport -> Amount
 afterTaxIncome (TaxReport r t1 t2) = totalIncome (tiIncome r) - t1 - t2 - (tiRRSPContrib r)
 
 -- Returns the after tax amount and the taxes paid
 computeTax :: IncomeTaxInfo -> TaxReportInput -> TaxReport
 computeTax taxes r =
-  let tFed = computeFedTax (fedTaxes taxes) r
-      tQc = computeQcTax (qcTaxes taxes) r
+  let tFed = computeFedTax (itFederalTaxes taxes) r
+      tQc = computeQcTax (itQuebecTaxes taxes) r
   in TaxReport r tFed tQc
 
 
-computeFedTax :: FederalIncomeTax -> TaxReportInput -> Decimal
+computeFedTax :: FederalIncomeTax -> TaxReportInput -> Amount
 computeFedTax fedTax r =
   let -- Step 2, compute total income
       totalIncome' = totalTaxIncome (fedDividendTax fedTax) (tiIncome r)
@@ -197,7 +256,9 @@ computeFedTax fedTax r =
       -- Step 5.A Federal gross income tax 
       tax = applyBrackets (fedTaxBrackets fedTax) taxableIncome
       -- Step 5.B non refundable tax credit
-      nonRefundableCr = personalCredit (fedBasicPersonnalAmnt fedTax) taxableIncome (fedCreditMultiplier fedTax) 
+      nonRefundableCr = roundTo 2 
+                      $ personnalAmount (fedBasicPersonnalAmount fedTax) taxableIncome 
+                      *. (fedNonRefundableTaxCreditsRate fedTax) 
       -- Step 5.C federal net income tax
       (d1, d2) = dividendCredit (fedDividendTax fedTax) (tiIncome r)
       divCredit = d1 + d2
@@ -209,7 +270,7 @@ computeFedTax fedTax r =
 
   where
 
-computeQcTax :: QuebecIncomeTax -> TaxReportInput -> Decimal
+computeQcTax :: QuebecIncomeTax -> TaxReportInput -> Amount
 computeQcTax qcTax r =
   let -- Step 1, compute total income
       totalIncome' = totalTaxIncome (qcDividendTax qcTax) (tiIncome r)
@@ -221,7 +282,8 @@ computeQcTax qcTax r =
       -- Step 3, taxable income
       taxableIncome = netIncome
       -- Step 4, non refundable tax credit
-      pc = personalCredit (qcBasicPersonnalAmnt qcTax) taxableIncome (qcCreditMultiplier qcTax)
+      pc = (qcBasicPersonnalAmount qcTax) 
+         *. (qcNonRefundableTaxCreditsRate qcTax)
       -- Step 5, income taxes
       tax = applyBrackets (qcTaxBrackets qcTax) taxableIncome
       tax2 = tax - pc -- line 413
@@ -229,10 +291,3 @@ computeQcTax qcTax r =
       tax3 = max 0 $ tax2 - d1 - d2 -- line 430
       
   in tax3
-
-incomeTaxTable :: IncomeTaxInfo -> [TaxReport]
-incomeTaxTable info =
-  let incomes = [x * 1000 | x <- [10..80]] -- Up to 80K
-              ++ [80000 + x * 5000 | x <- [1..24]] -- Up to 200K
-              ++ [200000 + x * 10000 | x <- [1..20]] -- Up to 400K
-  in map (\x -> computeTax info $ TaxReportInput (salary x) 0) incomes

@@ -26,6 +26,13 @@ dependencies:
 - Decimal
 - cassava
 - bytestring
+- scientific
+- time
+- aeson
+- yaml
+- filepath
+- optparse-applicative
+- text
 
 ghc-options:
 - -Wall
