@@ -17,12 +17,36 @@ where
 
 import Options.Applicative
 import Christopher.Cli.Command
+import Christopher.Csv (CsvParam(..))
+
+charReader :: ReadM Char
+charReader = eitherReader
+           $ \s -> case s of {[c] -> return c; _ -> Left "Expecting a single character"}
 
 inputFile :: Parser String
 inputFile = argument str (metavar "INPUT-FILE" <> help "The input file in JSON or YAML format.")
 
 outputFile :: Parser String
 outputFile = argument str (metavar "CSV-FILE" <> help "The output file in CSV format.")
+
+decimalSeparator :: Parser Char
+decimalSeparator = option charReader (short 'd' <>
+                          long "decimal-sep" <>
+                          metavar "DECIMAL-SEPARATOR" <>
+                          showDefault <>
+                          value ',' <>
+                          help "Specify the decimal separator to use.") 
+
+csvParam :: Parser CsvParam
+csvParam = (CsvParam . not)
+         <$> switch (long "nobom" <>
+                     help "Do not add the Byte Order Mark to the csv file.")
+         <*> option charReader (short 's' <>
+                          long "csv-sep" <>
+                          metavar "CSV-SEPARATOR" <>
+                          showDefault <>
+                          value ';' <>
+                          help "Specify the CSV separator to use.") 
 
 investmentTaxation :: Parser Command
 investmentTaxation = CInvestmentTaxation
@@ -37,6 +61,8 @@ taxTable :: Parser Command
 taxTable = CTaxTable
         <$> inputFile
         <*> optional outputFile
+        <*> csvParam
+        <*> decimalSeparator
 
 taxTableInfo :: ParserInfo Command
 taxTableInfo = info (taxTable <**> helper)

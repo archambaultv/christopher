@@ -15,7 +15,7 @@ module Christopher.Internal.LabelModifier(
 where
 
 import Data.List (intercalate)
-import Data.Functor.Foldable (ana, ListF(..))
+import Data.Functor.Foldable (para, ListF(..))
 import Data.Char (toLower, isUpper)
 import qualified Data.Aeson as A
 import qualified Data.Csv as C
@@ -38,9 +38,12 @@ fieldName = map toLower
           . break' isUpper -- Breaks on each word
 
 break' :: (a -> Bool) -> [a] -> [[a]]
-break' foo = ana coAlg
-  where -- coAlg :: [a] -> ListF [a] [a]
-        coAlg [] = Nil
-        coAlg xs = 
-          let (c, cs) = break foo xs
-          in Cons c cs
+break' foo = para alg
+  where -- alg :: ListF a ([a], [[a]]) -> [[a]]
+        alg Nil = []
+        alg (Cons c ([],_)) = [[c]]
+        alg (Cons c (_,[])) = [[c]] -- To silence non-exhaustive warning
+        alg (Cons c (x:_,(y : ys))) =
+          if foo x
+          then [c] : y : ys
+          else (c : y) : ys

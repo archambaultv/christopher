@@ -67,7 +67,7 @@ instance FromJSON FederalIncomeTax where
 
 data QuebecIncomeTax = QuebecIncomeTax{
   qcTaxBrackets :: TaxBrackets,
-  qcBasicPersonnalAmnt :: Amount,
+  qcBasicPersonnalAmount :: Amount,
   qcNonRefundableTaxCreditsRate :: Rate,
   qcDividendTax :: DividendTax
 } deriving (Show, Eq, Generic)
@@ -282,7 +282,7 @@ computeQcTax qcTax r =
       -- Step 3, taxable income
       taxableIncome = netIncome
       -- Step 4, non refundable tax credit
-      pc = (qcBasicPersonnalAmnt qcTax) 
+      pc = (qcBasicPersonnalAmount qcTax) 
          *. (qcNonRefundableTaxCreditsRate qcTax)
       -- Step 5, income taxes
       tax = applyBrackets (qcTaxBrackets qcTax) taxableIncome

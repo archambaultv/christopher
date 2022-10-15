@@ -25,7 +25,7 @@ import Christopher.Csv
 
 -- | The commands accepted by the command line interface
 data Command = CInvestmentTaxation FilePath
-             | CTaxTable FilePath (Maybe FilePath)
+             | CTaxTable FilePath (Maybe FilePath) CsvParam Char
 
 -- | How to execute the CLI commands
 runCommand :: Command -> IO ()
@@ -36,14 +36,14 @@ runCommand' (CInvestmentTaxation inputPath) = do
   input <- decodeFileByExt inputPath
   let report = investmentTaxation input
   lift $ putStrLn $ show report
-  -- writeToCsv reportPath defaultCsvParam report
+  -- writeToCsv reportPath standardCsvParam report
 
-runCommand' (CTaxTable inputPath outputPath) = do
+runCommand' (CTaxTable inputPath outputPath csvParam decimalSep) = do
   input <- decodeFileByExt inputPath
-  let report = taxTable input
+  let report = map (printTaxTableRow decimalSep) $ taxTable input
   case outputPath of
-    Nothing -> lift $ putStrLn $ show report
-    (Just p) -> lift $ writeToCsv p defaultCsvParam report
+    Nothing -> lift $ putStrLn $ encodeToCsv csvParam report
+    (Just p) -> lift $ writeToCsv p csvParam report
 
 -- Decodes with pure JSON for .json file. Any other extension is decoded with in
 -- YAML

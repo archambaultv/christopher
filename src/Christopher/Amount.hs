@@ -83,7 +83,7 @@ toScientificR (Rate x)= fromRational x
 -- | Formats a number for reporting
 showAmount :: Char -> Amount -> String
 showAmount decimalSeparator = 
-  map (\x -> if x == '.' then decimalSeparator else x) . show
+  map (\x -> if x == '.' then decimalSeparator else x) . show . toScientific
 
 -- | Formats a rate for reporting
 showRate :: Char -> Rate -> String
