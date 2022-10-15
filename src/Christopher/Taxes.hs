@@ -19,6 +19,8 @@ module Christopher.Taxes
   FederalIncomeTax(..),
   QuebecIncomeTax(..),
   Income(..),
+  iEligibleDividend,
+  iNonEligibleDividend,
   DisposableIncome(..),
   toAfterTax,
   salary,
@@ -148,9 +150,17 @@ instance FromJSON TaxBracket where
 
 data Income = Income {
   iSalary :: Amount,
-  iEligibleDividend :: Amount, -- Determiné
-  iNonEligibleDividend :: Amount
+  imEligibleDividend :: Maybe Amount, -- Determiné
+  imNonEligibleDividend :: Maybe Amount
 } deriving (Show, Eq, Generic)
+
+iEligibleDividend :: Income -> Amount
+iEligibleDividend (Income _ Nothing _) = 0
+iEligibleDividend (Income _ (Just d) _) = d
+
+iNonEligibleDividend :: Income -> Amount
+iNonEligibleDividend (Income _ _ Nothing) = 0
+iNonEligibleDividend (Income _ _ (Just d)) = d
 
 instance ToJSON Income where
   toJSON = genericToJSON jsonOptions
@@ -161,11 +171,17 @@ instance FromJSON Income where
 
 instance Semigroup Income where
   i1 <> i2 = Income (iSalary i1 + iSalary i2)
-                    (iEligibleDividend i1 + iEligibleDividend i2)
-                    (iNonEligibleDividend i1 + iNonEligibleDividend i2)
+                    (addMaybe (imEligibleDividend i1) (imEligibleDividend i2))
+                    (addMaybe (imNonEligibleDividend i1) (imNonEligibleDividend i2))
+
+addMaybe :: Maybe Amount -> Maybe Amount -> Maybe Amount
+addMaybe Nothing Nothing = Nothing
+addMaybe (Just x) Nothing = Just x
+addMaybe Nothing (Just x) = Just x
+addMaybe (Just x) (Just y) = Just (x + y)
 
 instance Monoid Income where
-  mempty = Income 0 0 0
+  mempty = Income 0 Nothing Nothing
 
 data DisposableIncome 
   = DIAfterTax Amount 
@@ -181,7 +197,7 @@ toAfterTax target taxInfo =
     DIAfterTax x -> x
 
 salary :: Amount -> Income
-salary x = Income x 0 0
+salary x = Income x Nothing Nothing
 
 totalIncome :: Income -> Amount
 totalIncome income = iSalary income 

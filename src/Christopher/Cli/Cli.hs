@@ -51,6 +51,9 @@ csvParam = (CsvParam . not)
 investmentTaxation :: Parser Command
 investmentTaxation = CInvestmentTaxation
                    <$> inputFile
+                   <*> optional outputFile
+                   <*> csvParam
+                   <*> decimalSeparator
 
 investmentTaxationInfo :: ParserInfo Command
 investmentTaxationInfo = info (investmentTaxation <**> helper)

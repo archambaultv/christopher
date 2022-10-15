@@ -16,7 +16,9 @@ module Christopher.Csv
   standardCsvParam,
   xlCanadaFrenchCsvParam,
   encodeToCsv,
+  encodeToNamedCsv,
   writeToCsv,
+  writeToNamedCsv,
   toISO8601
 )
 where
@@ -42,8 +44,24 @@ standardCsvParam = CsvParam False ','
 xlCanadaFrenchCsvParam :: CsvParam
 xlCanadaFrenchCsvParam = CsvParam True ';'
 
-writeToCsv :: (Csv.ToNamedRecord a, Csv.DefaultOrdered a) => FilePath -> CsvParam -> [a] -> IO ()
+writeToCsv :: (Csv.ToRecord a) => FilePath -> CsvParam -> [a] -> IO ()
 writeToCsv path (CsvParam b c) x =
+  let maybeBom = if b then bom else ""
+      myOptions = Csv.defaultEncodeOptions {
+                      Csv.encDelimiter = fromIntegral (ord c)
+                    }
+      x' = Csv.encodeWith myOptions x
+  in BL.writeFile path $ BL.concat [maybeBom, x']
+
+encodeToCsv :: (Csv.ToRecord a) => CsvParam -> [a] -> String
+encodeToCsv (CsvParam _ c) x =
+  let myOptions = Csv.defaultEncodeOptions {
+                      Csv.encDelimiter = fromIntegral (ord c)
+                    }
+  in T.unpack $ decodeUtf8 $ BL.toStrict $ Csv.encodeWith myOptions x
+
+writeToNamedCsv :: (Csv.ToNamedRecord a, Csv.DefaultOrdered a) => FilePath -> CsvParam -> [a] -> IO ()
+writeToNamedCsv path (CsvParam b c) x =
   let maybeBom = if b then bom else ""
       myOptions = Csv.defaultEncodeOptions {
                       Csv.encDelimiter = fromIntegral (ord c)
@@ -51,8 +69,8 @@ writeToCsv path (CsvParam b c) x =
       x' = Csv.encodeDefaultOrderedByNameWith myOptions x
   in BL.writeFile path $ BL.concat [maybeBom, x']
 
-encodeToCsv :: (Csv.ToNamedRecord a, Csv.DefaultOrdered a) => CsvParam -> [a] -> String
-encodeToCsv (CsvParam _ c) x =
+encodeToNamedCsv :: (Csv.ToNamedRecord a, Csv.DefaultOrdered a) => CsvParam -> [a] -> String
+encodeToNamedCsv (CsvParam _ c) x =
   let myOptions = Csv.defaultEncodeOptions {
                       Csv.encDelimiter = fromIntegral (ord c)
                     }
