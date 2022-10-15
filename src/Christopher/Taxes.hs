@@ -27,8 +27,7 @@ module Christopher.Taxes
   computeQcTax,
   TaxReport(..),
   TaxReportInput(..),
-  afterTaxIncome,
-  incomeTaxTable
+  afterTaxIncome
 )
 where
 
@@ -40,8 +39,8 @@ import Christopher.Amount
 import Christopher.Internal.LabelModifier
 
 data IncomeTaxInfo = Taxes {
-  fedTaxes :: FederalIncomeTax,
-  qcTaxes :: QuebecIncomeTax
+  itFederalTaxes :: FederalIncomeTax,
+  itQuebecTaxes :: QuebecIncomeTax
 } deriving (Show, Eq, Generic)
 
 instance ToJSON IncomeTaxInfo where
@@ -53,7 +52,7 @@ instance FromJSON IncomeTaxInfo where
 
 data FederalIncomeTax = FederalIncomeTax{
   fedTaxBrackets :: TaxBrackets,
-  fedBasicPersonnalAmnt :: LinearPersonnalAmnt,
+  fedBasicPersonnalAmount :: LinearPersonnalAmnt,
   fedQuebecAbatement :: Rate,
   fedNonRefundableTaxCreditsRate :: Rate,
   fedDividendTax :: DividendTax
@@ -70,9 +69,7 @@ data QuebecIncomeTax = QuebecIncomeTax{
   qcTaxBrackets :: TaxBrackets,
   qcBasicPersonnalAmnt :: Amount,
   qcNonRefundableTaxCreditsRate :: Rate,
-  qcDividendTax :: DividendTax,
-  qcDeductionForWorkersRate :: Rate,
-  qcDeductionForWorkersMax :: Amount
+  qcDividendTax :: DividendTax
 } deriving (Show, Eq, Generic)
 
 instance ToJSON QuebecIncomeTax where
@@ -83,10 +80,10 @@ instance FromJSON QuebecIncomeTax where
   parseJSON = genericParseJSON jsonOptions
 
 data DividendTax = DividendTax {
-  eligibleCreditRate :: Rate,
-  eligibleDivMultiplier :: Rate,
-  nonEligibleCreditRate :: Rate,
-  nonEligibleDivMultiplier :: Rate
+  dtEligibleCreditRate :: Rate,
+  dtEligibleMultiplier :: Rate,
+  dtNonEligibleCreditRate :: Rate,
+  dtNonEligibleMultiplier :: Rate
 } deriving (Show, Eq, Generic)
 
 instance ToJSON DividendTax where
@@ -98,9 +95,9 @@ instance FromJSON DividendTax where
 
 data LinearPersonnalAmnt  = LinearPersonnalAmnt {
   lpaMaximumAmount :: Amount,
-  lpaMaximumThresold :: Amount,
+  lpaMaximumThreshold :: Amount,
   lpaMinimumAmount :: Amount,
-  lpaMinimumThresold :: Amount
+  lpaMinimumThreshold :: Amount
 }
   deriving (Show, Eq, Generic)
 
@@ -194,20 +191,20 @@ totalIncome income = iSalary income
 -- Dividend are multiplied by their multiplier
 totalTaxIncome ::  DividendTax -> Income -> Amount
 totalTaxIncome t income = iSalary income + d1' + d2'
-  where d1' = roundTo 2 $ (iEligibleDividend income) *. (1 + eligibleDivMultiplier t)
-        d2' = roundTo 2 $ (iNonEligibleDividend income) *. (1 + nonEligibleDivMultiplier t)
+  where d1' = roundTo 2 $ (iEligibleDividend income) *. (1 + dtEligibleMultiplier t)
+        d2' = roundTo 2 $ (iNonEligibleDividend income) *. (1 + dtNonEligibleMultiplier t)
 
 dividendCredit :: DividendTax -> Income -> (Amount, Amount)
 dividendCredit t income = (eligibleCredit, nonEligibleCredit)
   where
       eligibleCredit = roundTo 2 
                      $ (iEligibleDividend income) 
-                     *. (1 + eligibleDivMultiplier t) 
-                     *. (eligibleCreditRate t)
+                     *. (1 + dtEligibleMultiplier t) 
+                     *. (dtEligibleCreditRate t)
       nonEligibleCredit = roundTo 2 
                         $ (iNonEligibleDividend income) 
-                        *. (1 + nonEligibleDivMultiplier t) 
-                        *. (nonEligibleCreditRate t)
+                        *. (1 + dtNonEligibleMultiplier t) 
+                        *. (dtNonEligibleCreditRate t)
 
 applyBrackets :: TaxBrackets -> Amount -> Amount
 applyBrackets (TaxBrackets baseRate brackets) x = para alg (TaxBracket 0 baseRate : brackets) 0
@@ -243,8 +240,8 @@ afterTaxIncome (TaxReport r t1 t2) = totalIncome (tiIncome r) - t1 - t2 - (tiRRS
 -- Returns the after tax amount and the taxes paid
 computeTax :: IncomeTaxInfo -> TaxReportInput -> TaxReport
 computeTax taxes r =
-  let tFed = computeFedTax (fedTaxes taxes) r
-      tQc = computeQcTax (qcTaxes taxes) r
+  let tFed = computeFedTax (itFederalTaxes taxes) r
+      tQc = computeQcTax (itQuebecTaxes taxes) r
   in TaxReport r tFed tQc
 
 
@@ -260,7 +257,7 @@ computeFedTax fedTax r =
       tax = applyBrackets (fedTaxBrackets fedTax) taxableIncome
       -- Step 5.B non refundable tax credit
       nonRefundableCr = roundTo 2 
-                      $ personnalAmount (fedBasicPersonnalAmnt fedTax) taxableIncome 
+                      $ personnalAmount (fedBasicPersonnalAmount fedTax) taxableIncome 
                       *. (fedNonRefundableTaxCreditsRate fedTax) 
       -- Step 5.C federal net income tax
       (d1, d2) = dividendCredit (fedDividendTax fedTax) (tiIncome r)
@@ -294,10 +291,3 @@ computeQcTax qcTax r =
       tax3 = max 0 $ tax2 - d1 - d2 -- line 430
       
   in tax3
-
-incomeTaxTable :: IncomeTaxInfo -> [TaxReport]
-incomeTaxTable info =
-  let incomes = [x * 1000 | x <- [10..80]] -- Up to 80K
-              ++ [80000 + x * 5000 | x <- [1..24]] -- Up to 200K
-              ++ [200000 + x * 10000 | x <- [1..20]] -- Up to 400K
-  in map (\x -> computeTax info $ TaxReportInput (salary x) 0) incomes
