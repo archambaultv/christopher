@@ -126,11 +126,9 @@ personnalAmount (LinearPersonnalAmnt maxAmnt maxLimit minAmnt minLimit) netInc =
   then maxAmnt
   else if netInc >= minLimit
        then minAmnt
-       else let span' = maxLimit - minLimit
-                diff = maxLimit - netInc
-                percent = diff / span' -- No rounding
-                amnt = roundTo 2 $ (maxAmnt - minAmnt) * percent
-            in minAmnt + amnt
+       else let slope = (minAmnt - maxAmnt) / (minLimit - maxLimit)
+                diff = netInc - maxLimit
+            in roundTo 2 $ maxAmnt + slope * diff
 
 -- Brackets limit must be in increasing order
 data TaxBrackets = TaxBrackets {
