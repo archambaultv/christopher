@@ -38,9 +38,12 @@ fieldName = intercalate " "
           . tail -- Drop the data type prefix
           . break' isUpper -- Breaks on each word
 
+abbv :: [String]
+abbv = ["FSS","RRQ","RQAP","RDTOH","RRSP","TFSA"]
+
 myToLower :: String -> String
 myToLower x = 
-  if x `elem` ["FSS","RRQ","RQAP","RDTOH"]
+  if x `elem` abbv
   then x
   else map toLower x
 
@@ -48,11 +51,13 @@ myToLower x =
 restoreAbreviations :: [String] -> [String]
 restoreAbreviations = cata alg
   where alg :: ListF String [String] -> [String]
-        alg Nil = []
+        alg Nil = []          
         alg (Cons "F" ("S":"S":xs)) = "FSS" : xs
         alg (Cons "R" ("Q":"A":"P":xs)) = "RQAP" : xs
         alg (Cons "R" ("R":"Q":xs)) = "RRQ" : xs
         alg (Cons "R" ("D":"T":"O":"H":xs)) = "RDTOH" : xs
+        alg (Cons "R" ("R":"S":"P":xs)) = "RRSP" : xs
+        alg (Cons "T" ("F":"S":"A":xs)) = "TFSA" : xs
         alg (Cons x xs) = x : xs
 
 
