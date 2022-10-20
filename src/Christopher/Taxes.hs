@@ -14,6 +14,7 @@ module Christopher.Taxes
   IncomeTaxInfo(..),
   sortTaxBrackets,
   TaxBrackets(..),
+  taxBrackets,
   DividendTax(..),
   LinearPersonnalAmnt(..),
   personnalAmount,
@@ -35,7 +36,7 @@ module Christopher.Taxes
 where
 
 import GHC.Generics
-import Data.List (sortOn)
+import Data.List (sortOn, group, sort)
 import Data.Functor.Foldable
 import Data.Aeson (ToJSON(..), FromJSON(..), genericToEncoding, 
                    genericToJSON, genericParseJSON)
@@ -46,6 +47,13 @@ data IncomeTaxInfo = IncomeTaxInfo {
   itFederalTaxes :: FederalIncomeTax,
   itQuebecTaxes :: QuebecIncomeTax
 } deriving (Show, Eq, Generic)
+
+-- Remove duplicates and sorts them
+taxBrackets :: IncomeTaxInfo -> [Amount]
+taxBrackets info = 
+  let f = map tbAbove $ tbBrackets $ fedTaxBrackets $ itFederalTaxes info
+      q = map tbAbove $ tbBrackets $ qcTaxBrackets $ itQuebecTaxes info
+  in map head $ group $ sort (f ++ q)
 
 instance ToJSON IncomeTaxInfo where
   toJSON = genericToJSON jsonOptions

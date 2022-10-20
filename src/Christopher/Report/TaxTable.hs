@@ -17,6 +17,7 @@ module Christopher.Report.TaxTable(
 )
 where
 
+import Data.List (group, sort)
 import GHC.Generics
 import Data.Aeson (ToJSON(..), FromJSON(..), genericToEncoding, 
                    genericToJSON, genericParseJSON)
@@ -26,14 +27,12 @@ import Christopher.Internal.LabelModifier
 import Christopher.Amount
 
 data TaxTableRow = TaxTableRow {
-  ttrTaxableIncome :: Amount,
+  ttrTaxableSalary :: Amount,
   ttrFederalTax :: Amount,
   ttrQuebecTax :: Amount,
   ttrTotalTax :: Amount,
-  ttrEffectiveRate :: Rate,
-  ttrFederalMarginalRate :: Rate,
-  ttrQuebecMarginalRate :: Rate,
-  ttrTotalMarginalRate :: Rate
+  ttrNetIncome :: Amount,
+  ttrEffectiveRate :: Rate
 } deriving (Eq, Show, Generic)
 
 -- JSON instances
@@ -57,26 +56,22 @@ instance DefaultOrdered TaxTableRow where
 -- Same as TaxTableRow, but the amount and rate have been printed before hand.
 -- To use another decimal separator for example.
 data TaxTableRow' = TaxTableRow' {
-  ttrsTaxableIncome :: String,
+  ttrsTaxableSalary :: String,
   ttrsFederalTax :: String,
   ttrsQuebecTax :: String,
   ttrsTotalTax :: String,
-  ttrsEffectiveRate :: String,
-  ttrsFederalMarginalRate :: String,
-  ttrsQuebecMarginalRate :: String,
-  ttrsTotalMarginalRate :: String
+  ttrsNetIncome :: String,
+  ttrsEffectiveRate :: String
 } deriving (Eq, Show, Generic)
 
 printTaxTableRow :: Char -> TaxTableRow -> TaxTableRow'
-printTaxTableRow c (TaxTableRow ti ft qt tt ef fmr qmr tmr) = TaxTableRow'
+printTaxTableRow c (TaxTableRow ti ft qt tt ni ef) = TaxTableRow'
   (showAmount c ti)
   (showAmount c ft)
   (showAmount c qt)
   (showAmount c tt)
+  (showAmount c ni)
   (showRate c ef)
-  (showRate c fmr)
-  (showRate c qmr)
-  (showRate c tmr)
 
 -- JSON instances
 instance ToJSON TaxTableRow' where
@@ -96,36 +91,29 @@ instance ToNamedRecord TaxTableRow' where
 instance DefaultOrdered TaxTableRow' where
   headerOrder = genericHeaderOrder csvOptions
 
-
-marginalSpan :: Amount
-marginalSpan = 1000
-
 taxTable :: IncomeTaxInfo -> [TaxTableRow]
 taxTable info =
   let incomes = [x * 1000 | x <- [10..80]] -- Up to 80K
               ++ [80000 + x * 5000 | x <- [1..24]] -- Up to 200K
               ++ [200000 + x * 10000 | x <- [1..20]] -- Up to 400K
+      incomes2 = map head
+               $ group
+               $ sort
+               $ incomes ++ taxBrackets info
       info' = sortTaxBrackets info
-  in map (\x -> reportToTableRow (computeTax info' $ TaxReportInput (salary x) 0,
-                                  computeTax info' $ TaxReportInput (salary (x + marginalSpan)) 0)) 
-     incomes
+  in map (\x -> reportToTableRow (computeTax info' $ TaxReportInput (salary x) 0))
+     incomes2
 
-reportToTableRow :: (TaxReport, TaxReport) -> TaxTableRow
-reportToTableRow (tr, marginalTr) =
+reportToTableRow :: TaxReport -> TaxTableRow
+reportToTableRow tr =
   let taxableIncome = iSalary $ tiIncome $ trTaxReportInput tr
       fedTax = trFedIncomeTax tr
       qcTax = trQcIncomeTax tr
       totalTax = fedTax + qcTax
       effectiveRate = toRate $ roundTo 4 $ totalTax / taxableIncome
-
-      fedTax2 = trFedIncomeTax marginalTr
-      qcTax2 = trQcIncomeTax marginalTr
-      totalTax2 = fedTax2 + qcTax2
-      fedMarginalRate = toRate $ roundTo 4 $ (fedTax2 - fedTax) / marginalSpan
-      qcMarginalRate = toRate $ roundTo 4 $ (qcTax2 - qcTax) / marginalSpan
-      totalMarginalRate = toRate $ roundTo 4 $ (totalTax2 - totalTax) / marginalSpan
   in TaxTableRow taxableIncome 
                  (roundTo 0 fedTax) 
                  (roundTo 0 qcTax)
-                 (roundTo 0 totalTax) 
-                 effectiveRate fedMarginalRate qcMarginalRate totalMarginalRate
+                 (roundTo 0 totalTax)
+                 (taxableIncome - (roundTo 0 totalTax))
+                 effectiveRate
