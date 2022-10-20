@@ -8,8 +8,7 @@
 -- Maintainer  :  Vincent Archambault <vincentarchambault@icloud.com>
 -- Stability   :  experimental
 --
--- This module defines what an amount is. All computatations are always rounded to
--- the fixed number of decimal place
+-- This module defines what an amount is.
 
 module Christopher.Amount
 (

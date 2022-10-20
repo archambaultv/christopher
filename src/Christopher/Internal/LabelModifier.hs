@@ -15,7 +15,7 @@ module Christopher.Internal.LabelModifier(
 where
 
 import Data.List (intercalate)
-import Data.Functor.Foldable (para, ListF(..))
+import Data.Functor.Foldable (cata, para, ListF(..))
 import Data.Char (toLower, isUpper)
 import qualified Data.Aeson as A
 import qualified Data.Csv as C
@@ -32,14 +32,33 @@ csvOptions = C.defaultOptions{
 }
 
 fieldName :: String -> String
-fieldName = map toLower
-          . intercalate " "
+fieldName = intercalate " "
+          . map myToLower
+          . restoreAbreviations
           . tail -- Drop the data type prefix
           . break' isUpper -- Breaks on each word
 
-break' :: (a -> Bool) -> [a] -> [[a]]
+myToLower :: String -> String
+myToLower x = 
+  if x `elem` ["FSS","RRQ","RQAP","RDTOH"]
+  then x
+  else map toLower x
+
+-- Restore FSS RQAP RRQ RDTOH as single word
+restoreAbreviations :: [String] -> [String]
+restoreAbreviations = cata alg
+  where alg :: ListF String [String] -> [String]
+        alg Nil = []
+        alg (Cons "F" ("S":"S":xs)) = "FSS" : xs
+        alg (Cons "R" ("Q":"A":"P":xs)) = "RQAP" : xs
+        alg (Cons "R" ("R":"Q":xs)) = "RRQ" : xs
+        alg (Cons "R" ("D":"T":"O":"H":xs)) = "RDTOH" : xs
+        alg (Cons x xs) = x : xs
+
+
+break' :: (Char -> Bool) -> String -> [String]
 break' foo = para alg
-  where -- alg :: ListF a ([a], [[a]]) -> [[a]]
+  where alg :: ListF Char (String, [String]) -> [String]
         alg Nil = []
         alg (Cons c ([],_)) = [[c]]
         alg (Cons c (_,[])) = [[c]] -- To silence non-exhaustive warning

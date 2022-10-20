@@ -20,12 +20,14 @@ import qualified Data.Aeson as JSON
 import Data.Char (toLower)
 import System.FilePath (takeExtension)
 import Christopher.Report.InvestmentTaxation
+import Christopher.Report.SalaryOrDividend
 import Christopher.Report.TaxTable
-import Christopher.Csv
+import Christopher.Internal.Csv
 
 -- | The commands accepted by the command line interface
 data Command = CInvestmentTaxation FilePath (Maybe FilePath) CsvParam Char
              | CTaxTable FilePath (Maybe FilePath) CsvParam Char
+             | CSalaryOrDividend FilePath (Maybe FilePath) CsvParam Char
 
 -- | How to execute the CLI commands
 runCommand :: Command -> IO ()
@@ -42,6 +44,13 @@ runCommand' (CInvestmentTaxation inputPath outputPath csvParam decimalSep) = do
 runCommand' (CTaxTable inputPath outputPath csvParam decimalSep) = do
   input <- decodeFileByExt inputPath
   let report = map (printTaxTableRow decimalSep) $ taxTable input
+  case outputPath of
+    Nothing -> lift $ putStrLn $ encodeToNamedCsv csvParam report
+    (Just p) -> lift $ writeToNamedCsv p csvParam report
+
+runCommand' (CSalaryOrDividend inputPath outputPath csvParam decimalSep) = do
+  input <- decodeFileByExt inputPath
+  let report = map (printSalaryOrDividendRow decimalSep) $ salaryOrDividend input
   case outputPath of
     Nothing -> lift $ putStrLn $ encodeToNamedCsv csvParam report
     (Just p) -> lift $ writeToNamedCsv p csvParam report

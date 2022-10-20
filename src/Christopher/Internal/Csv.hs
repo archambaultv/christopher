@@ -10,7 +10,7 @@
 --
 -- This module defines some helpers to export data to the csv format
 
-module Christopher.Csv
+module Christopher.Internal.Csv
 (
   CsvParam(..),
   standardCsvParam,

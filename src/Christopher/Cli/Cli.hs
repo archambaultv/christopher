@@ -17,7 +17,7 @@ where
 
 import Options.Applicative
 import Christopher.Cli.Command
-import Christopher.Csv (CsvParam(..))
+import Christopher.Internal.Csv (CsvParam(..))
 
 charReader :: ReadM Char
 charReader = eitherReader
@@ -70,12 +70,25 @@ taxTable = CTaxTable
 taxTableInfo :: ParserInfo Command
 taxTableInfo = info (taxTable <**> helper)
               (fullDesc
-               <> progDesc "Computes the tax table according to the parameters in the INPUT-FILE.")
+               <> progDesc "Computes the tax table according to the fiscal parameters in the INPUT-FILE.")
+
+salaryOrDividend :: Parser Command
+salaryOrDividend = CSalaryOrDividend
+                <$> inputFile
+                <*> optional outputFile
+                <*> csvParam
+                <*> decimalSeparator
+
+salaryOrDividendInfo :: ParserInfo Command
+salaryOrDividendInfo = info (salaryOrDividend <**> helper)
+              (fullDesc
+               <> progDesc "Computes if it is better to pay a salary or dividend to the fiscal parameters in the INPUT-FILE.")
 
 parseCommand :: Parser Command
 parseCommand = subparser
   ( command "investment-taxation" investmentTaxationInfo <>
-    command "tax-table" taxTableInfo
+    command "tax-table" taxTableInfo <>
+    command "salary-or-dividend" salaryOrDividendInfo
   )
 
 opts :: ParserInfo Command

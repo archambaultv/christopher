@@ -91,7 +91,7 @@ instance ToNamedRecord TaxTableRow' where
 instance DefaultOrdered TaxTableRow' where
   headerOrder = genericHeaderOrder csvOptions
 
-taxTable :: IncomeTaxInfo -> [TaxTableRow]
+taxTable :: PersonnalTax -> [TaxTableRow]
 taxTable info =
   let incomes = [x * 1000 | x <- [10..80]] -- Up to 80K
               ++ [80000 + x * 5000 | x <- [1..24]] -- Up to 200K
@@ -101,14 +101,14 @@ taxTable info =
                $ sort
                $ incomes ++ taxBrackets info
       info' = sortTaxBrackets info
-  in map (\x -> reportToTableRow (computeTax info' $ TaxReportInput (salary x) 0))
+  in map (\x -> reportToTableRow (computePersonnalTax info' $ TaxReportInput (salary x) 0))
      incomes2
 
 reportToTableRow :: TaxReport -> TaxTableRow
 reportToTableRow tr =
   let taxableIncome = iSalary $ tiIncome $ trTaxReportInput tr
-      fedTax = trFedIncomeTax tr
-      qcTax = trQcIncomeTax tr
+      fedTax = trFedPersonnalTax tr
+      qcTax = trQcPersonnalTax tr
       totalTax = fedTax + qcTax
       effectiveRate = toRate $ roundTo 4 $ totalTax / taxableIncome
   in TaxTableRow taxableIncome 
