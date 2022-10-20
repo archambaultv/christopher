@@ -17,6 +17,7 @@ module Christopher.Cli.Command
 import Control.Monad.Except (runExceptT, ExceptT(..), lift)
 import qualified Data.Yaml as Yaml
 import qualified Data.Aeson as JSON
+import qualified Data.Csv as Csv
 import Data.Char (toLower)
 import System.FilePath (takeExtension)
 import Christopher.Report.InvestmentTaxation
@@ -25,7 +26,7 @@ import Christopher.Report.TaxTable
 import Christopher.Internal.Csv
 
 -- | The commands accepted by the command line interface
-data Command = CInvestmentTaxation FilePath (Maybe FilePath) CsvParam Char
+data Command = CInvestmentTaxation FilePath FilePath (Maybe FilePath) CsvParam Char
              | CTaxTable FilePath (Maybe FilePath) CsvParam Char
              | CSalaryOrDividend FilePath (Maybe FilePath) CsvParam Char
 
@@ -34,26 +35,27 @@ runCommand :: Command -> IO ()
 runCommand c = runExceptT (runCommand' c) >>= either putStrLn return
 
 runCommand' :: Command -> ExceptT String IO ()
-runCommand' (CInvestmentTaxation inputPath outputPath csvParam decimalSep) = do
-  input <- decodeFileByExt inputPath
-  let report = (printInvestmentTaxation decimalSep) $ investmentTaxation input
-  case outputPath of
-    Nothing -> lift $ putStrLn $ encodeToCsv csvParam report
-    (Just p) -> lift $ writeToCsv p csvParam report
+runCommand' (CInvestmentTaxation taxesPath paramsPath outputPath csvParam decimalSep) = do
+  taxes <- decodeFileByExt taxesPath
+  params <- decodeFileByExt paramsPath
+  let report = map (printInvestmentTaxationRow decimalSep) $ investmentTaxation taxes params
+  outputReport outputPath csvParam report
 
 runCommand' (CTaxTable inputPath outputPath csvParam decimalSep) = do
   input <- decodeFileByExt inputPath
   let report = map (printTaxTableRow decimalSep) $ taxTable input
-  case outputPath of
-    Nothing -> lift $ putStrLn $ encodeToNamedCsv csvParam report
-    (Just p) -> lift $ writeToNamedCsv p csvParam report
+  outputReport outputPath csvParam report
 
 runCommand' (CSalaryOrDividend inputPath outputPath csvParam decimalSep) = do
   input <- decodeFileByExt inputPath
   let report = map (printSalaryOrDividendRow decimalSep) $ salaryOrDividend input
+  outputReport outputPath csvParam report
+
+outputReport :: (Csv.ToRecord a) => Maybe FilePath -> CsvParam -> [a] -> ExceptT String IO ()
+outputReport outputPath csvParam report =
   case outputPath of
-    Nothing -> lift $ putStrLn $ encodeToNamedCsv csvParam report
-    (Just p) -> lift $ writeToNamedCsv p csvParam report
+    Nothing -> lift $ putStrLn $ encodeToCsv csvParam report
+    (Just p) -> lift $ writeToCsv p csvParam report
 
 -- Decodes with pure JSON for .json file. Any other extension is decoded with in
 -- YAML

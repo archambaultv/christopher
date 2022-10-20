@@ -23,8 +23,8 @@ charReader :: ReadM Char
 charReader = eitherReader
            $ \s -> case s of {[c] -> return c; _ -> Left "Expecting a single character"}
 
-inputFile :: Parser String
-inputFile = argument str (metavar "INPUT-FILE" <> help "The input file in JSON or YAML format.")
+taxesFile :: Parser String
+taxesFile = argument str (metavar "INPUT-FILE" <> help "The JSON or YAML file containing tax related parameters.")
 
 outputFile :: Parser String
 outputFile = argument str (metavar "CSV-FILE" <> help "The output file in CSV format.")
@@ -50,7 +50,8 @@ csvParam = (CsvParam . not)
 
 investmentTaxation :: Parser Command
 investmentTaxation = CInvestmentTaxation
-                   <$> inputFile
+                   <$> taxesFile
+                   <*> argument str (metavar "TAXES-FILE" <> help "The JSON or YAML file containing the simulation parameters.")
                    <*> optional outputFile
                    <*> csvParam
                    <*> decimalSeparator
@@ -62,7 +63,7 @@ investmentTaxationInfo = info (investmentTaxation <**> helper)
 
 taxTable :: Parser Command
 taxTable = CTaxTable
-        <$> inputFile
+        <$> taxesFile
         <*> optional outputFile
         <*> csvParam
         <*> decimalSeparator
@@ -74,7 +75,7 @@ taxTableInfo = info (taxTable <**> helper)
 
 salaryOrDividend :: Parser Command
 salaryOrDividend = CSalaryOrDividend
-                <$> inputFile
+                <$> taxesFile
                 <*> optional outputFile
                 <*> csvParam
                 <*> decimalSeparator

@@ -101,10 +101,10 @@ taxTable info =
                $ sort
                $ incomes ++ taxBrackets info
       info' = sortTaxBrackets info
-  in map (\x -> reportToTableRow (computePersonnalTax info' $ TaxReportInput (salary x) 0))
+  in map (\x -> reportToTableRow (computePersonnalTax info' $ PersonnalTaxInput (salary x) 0))
      incomes2
 
-reportToTableRow :: TaxReport -> TaxTableRow
+reportToTableRow :: PersonnalTaxReport -> TaxTableRow
 reportToTableRow tr =
   let taxableIncome = iSalary $ tiIncome $ trTaxReportInput tr
       fedTax = trFedPersonnalTax tr

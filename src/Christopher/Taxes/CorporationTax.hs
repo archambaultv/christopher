@@ -14,8 +14,11 @@ module Christopher.Taxes.CorporationTax
 (
   CorporationTax(..),
   CorporationRates(..),
-  computeEarningTax,
+  CorporationTaxReport(..),
+  CorporationTaxInput(..),
+  computeCorporationTax,
   disposableEarning,
+  activeEarningOnly,
   salaryAndCorporationSocialCharges
 )
 where
@@ -44,17 +47,51 @@ instance ToJSON CorporationTax where
 instance FromJSON CorporationTax where
   parseJSON = genericParseJSON jsonOptions
 
-computeEarningTax :: CorporationTax -> Amount -> Amount
-computeEarningTax (CorporationTax fed qc _ _ _) x = 
-  let foo corpo =
-        let small = min x (crActiveEarningSmallRateLimit corpo)
-            above = max 0 (x - (crActiveEarningSmallRateLimit corpo))
+data CorporationTaxReport = CorporationTaxReport {
+  ctTaxReportInput :: CorporationTaxInput,
+  ctFedCorporationTax :: Amount,
+  ctQcCorporationTax :: Amount,
+  ctRDTOH :: Amount,
+  ctCapitalDividendAccount :: Amount
+} deriving (Show, Eq)
+
+data CorporationTaxInput = CorporationTaxInput {
+  ctiActiveEarning :: Amount,
+  ctiPassiveCapitalGain :: Amount, -- All the gains must be passed, so we can compute CDA
+  ctiPassiveDividendEarning :: Amount,
+  ctiPassiveOtherEarning :: Amount,
+  ctiRDTOH :: Amount,
+  ctiCapitalDividendAccount :: Amount
+} deriving (Show, Eq)
+
+activeEarningOnly :: Amount -> CorporationTaxInput
+activeEarningOnly x = CorporationTaxInput x 0 0 0 0 0 
+
+computeCorporationTax :: CorporationTax -> CorporationTaxInput -> CorporationTaxReport
+computeCorporationTax (CorporationTax fed qc _ rDTOHRate dividendRDTOHRate) 
+                    x@(CorporationTaxInput active capital divi passive rdtoh cda) = 
+  let activeTax corpo =
+        let small = min active (crActiveEarningSmallRateLimit corpo)
+            above = max 0 (active - (crActiveEarningSmallRateLimit corpo))
         in small *. (crActiveEarningSmallRate corpo)
            + above *. (ctActiveEarningRate corpo)
-  in foo fed + foo qc
+      passiveTax corpo = passive *. (ctPassiveEarningRate corpo)
+      divTax corpo = divi *. (ctPassiveDividendRate corpo)
+      gainTax corpo = capital *. (0.5 * ctPassiveEarningRate corpo)
+  in CorporationTaxReport x 
+     (activeTax fed + passiveTax fed + divTax fed + gainTax fed)
+     (activeTax qc + passiveTax qc + divTax qc + gainTax fed)
+     (rdtoh +  (capital *. 0.5 + passive) *. (rDTOHRate)  + divi *. dividendRDTOHRate)
+     (cda + 0.5 * capital)
 
-disposableEarning :: CorporationTax -> Amount -> Amount
-disposableEarning tax x = x - computeEarningTax tax x
+disposableEarning :: CorporationTaxReport -> Amount
+disposableEarning tr = 
+  let x = ctTaxReportInput tr
+      r = ctiActiveEarning x
+        + ctiPassiveCapitalGain x
+        + ctiPassiveDividendEarning x
+        + ctiPassiveOtherEarning x
+  in r - ctFedCorporationTax tr - ctQcCorporationTax tr
 
 data CorporationRates = CorporationRates {
   crActiveEarningSmallRate :: Rate,

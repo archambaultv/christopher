@@ -93,8 +93,8 @@ sOrD t@(Taxes corpo _ _) earning =
       -- Maximum salary that can be paid, considering social charges
       foo p =
         let (s, _) = salaryAndCorporationSocialCharges (ctSocialChargesRates corpo) (earning *. p)
-            d = disposableEarning corpo (earning *. (1 - p)) 
+            d = disposableEarning $ computeCorporationTax corpo (activeEarningOnly $ earning *. (1 - p)) 
         in SalaryOrDividendRow earning p (disposableIncome 
                                          $ computePersonnalTax (tPersonnalTax t) 
-                                         $ TaxReportInput (Income s (Just 0) (Just d)) 0)
+                                         $ PersonnalTaxInput (Income s (Just 0) (Just d)) 0)
   in map foo ps

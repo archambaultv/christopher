@@ -22,8 +22,8 @@ module Christopher.Taxes.PersonnalTax
   DividendTax(..),
   DisposableIncome(..),
   toAfterTax,
-  TaxReport(..),
-  TaxReportInput(..),
+  PersonnalTaxReport(..),
+  PersonnalTaxInput(..),
   computePersonnalTax,
   disposableIncome,
   SocialChargesRates(..),
@@ -165,7 +165,7 @@ toAfterTax target taxInfo =
   case target of
     DIBeforeTax x -> disposableIncome 
                       $ computePersonnalTax taxInfo 
-                      $ TaxReportInput (salary x) 0
+                      $ PersonnalTaxInput (salary x) 0
     DIAfterTax x -> x
 
 totalIncome :: Income -> Amount
@@ -207,29 +207,29 @@ applyBrackets (TaxBrackets baseRate brackets) x = para alg (TaxBracket 0 baseRat
         let acc' = roundTo 2 $ acc + (nextLimit - limit) *. rate
         in next acc'
 
-data TaxReport = TaxReport {
-  trTaxReportInput :: TaxReportInput,
+data PersonnalTaxReport = PersonnalTaxReport {
+  trTaxReportInput :: PersonnalTaxInput,
   trFedPersonnalTax :: Amount,
   trQcPersonnalTax :: Amount
 } deriving (Show, Eq)
 
-data TaxReportInput = TaxReportInput {
+data PersonnalTaxInput = PersonnalTaxInput {
   tiIncome :: Income,
   tiRRSPContrib :: Amount
 } deriving (Show, Eq)
 
-disposableIncome :: TaxReport -> Amount
-disposableIncome (TaxReport r t1 t2) = totalIncome (tiIncome r) - t1 - t2 - (tiRRSPContrib r)
+disposableIncome :: PersonnalTaxReport -> Amount
+disposableIncome (PersonnalTaxReport r t1 t2) = totalIncome (tiIncome r) - t1 - t2 - (tiRRSPContrib r)
 
 -- Returns the after tax amount and the taxes paid
-computePersonnalTax :: PersonnalTax -> TaxReportInput -> TaxReport
+computePersonnalTax :: PersonnalTax -> PersonnalTaxInput -> PersonnalTaxReport
 computePersonnalTax taxes r =
   let tFed = computeFedTax (ptFederalPersonnalTax taxes) r
       tQc = computeQcTax (ptQuebecPersonnalTax taxes) r
-  in TaxReport r tFed tQc
+  in PersonnalTaxReport r tFed tQc
 
 
-computeFedTax :: FederalPersonnalTax -> TaxReportInput -> Amount
+computeFedTax :: FederalPersonnalTax -> PersonnalTaxInput -> Amount
 computeFedTax fedTax r =
   let -- Step 2, compute total income
       totalIncome' = totalTaxIncome (fedDividendTax fedTax) (tiIncome r)
@@ -254,7 +254,7 @@ computeFedTax fedTax r =
 
   where
 
-computeQcTax :: QuebecPersonnalTax -> TaxReportInput -> Amount
+computeQcTax :: QuebecPersonnalTax -> PersonnalTaxInput -> Amount
 computeQcTax qcTax r =
   let -- Step 1, compute total income
       totalIncome' = totalTaxIncome (qcDividendTax qcTax) (tiIncome r)
