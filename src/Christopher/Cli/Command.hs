@@ -51,11 +51,12 @@ runCommand' (CSalaryOrDividend inputPath outputPath csvParam decimalSep) = do
   let report = map (printSalaryOrDividendRow decimalSep) $ salaryOrDividend input
   outputReport outputPath csvParam report
 
-outputReport :: (Csv.ToRecord a) => Maybe FilePath -> CsvParam -> [a] -> ExceptT String IO ()
+outputReport :: (Csv.ToNamedRecord a, Csv.DefaultOrdered a) 
+             => Maybe FilePath -> CsvParam -> [a] -> ExceptT String IO ()
 outputReport outputPath csvParam report =
   case outputPath of
-    Nothing -> lift $ putStrLn $ encodeToCsv csvParam report
-    (Just p) -> lift $ writeToCsv p csvParam report
+    Nothing -> lift $ putStrLn $ encodeToNamedCsv csvParam report
+    (Just p) -> lift $ writeToNamedCsv p csvParam report
 
 -- Decodes with pure JSON for .json file. Any other extension is decoded with in
 -- YAML
