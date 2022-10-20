@@ -195,7 +195,7 @@ invest t@(Taxes c _ _) (InvestmentTaxation' earning incomes marketData nbYears) 
 
       -- Compute RRSP gain
       rrspInitialAmnt = (s2 - sCorpo)
-      rrspFinalAmnt = rrspInitialAmnt *. (1 + r + rD + rI) ^ nbYears
+      rrspFinalAmnt = rrspInitialAmnt *. ((1 + r + rD + rI) ^ nbYears)
       rrsp1 = disposableIncome $ computePersonnalTax pt $ PersonnalTaxInput (salary finalSalary) 0
       rrsp2 = disposableIncome $ computePersonnalTax pt $ PersonnalTaxInput (salary (finalSalary + rrspFinalAmnt)) 0
       rrspGain = rrsp2 - rrsp1
@@ -204,7 +204,7 @@ invest t@(Taxes c _ _) (InvestmentTaxation' earning incomes marketData nbYears) 
       tfsa1 = disposableIncome $ computePersonnalTax pt $ PersonnalTaxInput (salary (otherSalary + sCorpo)) 0
       tfsa2 = disposableIncome $ computePersonnalTax pt $ PersonnalTaxInput (salary (otherSalary + s2)) 0
       tfsaInitalAmnt = tfsa2 - tfsa1
-      tfsaGain = tfsaInitalAmnt *. (1 + r + rD + rI) ^ nbYears
+      tfsaGain = tfsaInitalAmnt *. ((1 + r + rD + rI) ^ nbYears)
 
       -- Compute Corporation gain
       afterTaxEarnings = disposableEarning $ computeCorporationTax c (activeEarningOnly earning)
