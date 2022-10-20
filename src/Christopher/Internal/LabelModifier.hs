@@ -47,7 +47,7 @@ myToLower x =
   then x
   else map toLower x
 
--- Restore FSS RQAP RRQ RDTOH as single word
+-- Restore items of abbv as single word
 restoreAbreviations :: [String] -> [String]
 restoreAbreviations = cata alg
   where alg :: ListF String [String] -> [String]
