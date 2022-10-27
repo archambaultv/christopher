@@ -24,7 +24,6 @@ module Christopher.Taxes.CorporationTax
 where
 
 import GHC.Generics
-import Data.List (sort)
 import Data.Aeson (ToJSON(..), FromJSON(..), genericToEncoding, 
                    genericToJSON, genericParseJSON)
 import Christopher.Amount
@@ -65,33 +64,42 @@ data CorporationTaxInput = CorporationTaxInput {
 } deriving (Show, Eq)
 
 activeEarningOnly :: Amount -> CorporationTaxInput
-activeEarningOnly x = CorporationTaxInput x 0 0 0 0 0 
+activeEarningOnly x = CorporationTaxInput x mempty mempty mempty mempty mempty 
 
 computeCorporationTax :: CorporationTax -> CorporationTaxInput -> CorporationTaxReport
 computeCorporationTax (CorporationTax fed qc _ rDTOHRate dividendRDTOHRate) 
                     x@(CorporationTaxInput active capital divi passive rdtoh cda) = 
   let activeTax corpo =
         let small = min active (crActiveEarningSmallRateLimit corpo)
-            above = max 0 (active - (crActiveEarningSmallRateLimit corpo))
-        in small *. (crActiveEarningSmallRate corpo)
+            above = max mempty (active -. (crActiveEarningSmallRateLimit corpo))
+        in roundAwayFromZero
+           $ small *. (crActiveEarningSmallRate corpo)
            + above *. (ctActiveEarningRate corpo)
-      passiveTax corpo = passive *. (ctPassiveEarningRate corpo)
-      divTax corpo = divi *. (ctPassiveDividendRate corpo)
-      gainTax corpo = capital *. (0.5 * ctPassiveEarningRate corpo)
+      passiveTax corpo = roundAwayFromZero
+                       $ passive *. (ctPassiveEarningRate corpo)
+      divTax corpo = roundAwayFromZero
+                   $ divi *. (ctPassiveDividendRate corpo)
+      gainTax corpo = roundAwayFromZero
+                    $ capital *. (0.5 * ctPassiveEarningRate corpo)
+      halfCapital = roundAwayFromZero (capital *. 0.5)
+
   in CorporationTaxReport x 
-     (activeTax fed + passiveTax fed + divTax fed + gainTax fed)
-     (activeTax qc + passiveTax qc + divTax qc + gainTax fed)
-     (rdtoh +  (capital *. 0.5 + passive) *. (rDTOHRate)  + divi *. dividendRDTOHRate)
-     (cda + 0.5 * capital)
+     (activeTax fed +. passiveTax fed +. divTax fed +. gainTax fed)
+     (activeTax qc +. passiveTax qc +. divTax qc +. gainTax fed)
+     (rdtoh 
+      +. roundAwayFromZero (halfCapital *. rDTOHRate)
+      +. roundAwayFromZero (passive *. rDTOHRate)
+      +. roundAwayFromZero (divi *. dividendRDTOHRate))
+     (cda +. halfCapital)
 
 disposableEarning :: CorporationTaxReport -> Amount
 disposableEarning tr = 
   let x = ctTaxReportInput tr
       r = ctiActiveEarning x
-        + ctiPassiveCapitalGain x
-        + ctiPassiveDividendEarning x
-        + ctiPassiveOtherEarning x
-  in r - ctFedCorporationTax tr - ctQcCorporationTax tr
+        +. ctiPassiveCapitalGain x
+        +. ctiPassiveDividendEarning x
+        +. ctiPassiveOtherEarning x
+  in r -. ctFedCorporationTax tr -. ctQcCorporationTax tr
 
 data CorporationRates = CorporationRates {
   crActiveEarningSmallRate :: Rate,
@@ -111,24 +119,24 @@ instance FromJSON CorporationRates where
 -- Find the salary and corporation social charges to match the earning amount
 -- Rounds down the salary to the nearest cent
 salaryAndCorporationSocialCharges :: SocialChargesRates -> Amount -> (Salary, SocialCharges)
-salaryAndCorporationSocialCharges cs d =
-  let x = sort [(scrRRQMaxSalary cs, scrRRQMaxSalary cs *. scrRRQRate cs, True), 
-                (scrRQAPMaxSalary cs, scrRQAPMaxSalary cs *. scrRQAPRate cs, False)]
-      (salary1, cs1, max1IsRRQ) = head x
-      (salary2, cs2, _) = head $ tail x
-      d1 = salary1 + totalSocialCharges (socialCharges cs salary1)
-      d2 = salary2 + totalSocialCharges (socialCharges cs salary2)
+salaryAndCorporationSocialCharges _ _ = undefined
+  -- let x = sort [(scrRRQMaxSalary cs, scrRRQMaxSalary cs *. scrRRQRate cs, True), 
+  --               (scrRQAPMaxSalary cs, scrRQAPMaxSalary cs *. scrRQAPRate cs, False)]
+  --     (salary1, cs1, max1IsRRQ) = head x
+  --     (salary2, cs2, _) = head $ tail x
+  --     d1 = salary1 + totalSocialCharges (socialCharges cs salary1)
+  --     d2 = salary2 + totalSocialCharges (socialCharges cs salary2)
 
-      t1 = (1 + scrRRQRate cs + scrRQAPRate cs + scrFSSRate cs)
-      t2 = if max1IsRRQ 
-           then (1 + scrRQAPRate cs + scrFSSRate cs)
-           else (1 + scrRRQRate cs + scrFSSRate cs)
-      t3 = (1 + scrFSSRate cs)
+  --     t1 = (1 + scrRRQRate cs + scrRQAPRate cs + scrFSSRate cs)
+  --     t2 = if max1IsRRQ 
+  --          then (1 + scrRQAPRate cs + scrFSSRate cs)
+  --          else (1 + scrRRQRate cs + scrFSSRate cs)
+  --     t3 = (1 + scrFSSRate cs)
 
-      s :: Salary
-      s = if d <= d1
-          then d *. (1 / t1)
-          else if d <= d2
-                then (d - cs1) *. (1 / t2)
-                else (d - cs1 - cs2) *. (1 / t3)
-  in (s, socialCharges cs s)
+  --     s :: Salary
+  --     s = if d <= d1
+  --         then roundAwayFromZero $ d *. (1 % t1)
+  --         else if d <= d2
+  --               then (d - cs1) *. (1 / t2)
+  --               else (d - cs1 - cs2) *. (1 / t3)
+  -- in (s, socialCharges cs s)

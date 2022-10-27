@@ -16,12 +16,23 @@ module Christopher.Cli.Cli
 where
 
 import Options.Applicative
+import Christopher.Amount
 import Christopher.Cli.Command
 import Christopher.Internal.Csv (CsvParam(..))
+import Data.Scientific (scientificP)
+import Text.ParserCombinators.ReadP (readP_to_S)
 
 charReader :: ReadM Char
 charReader = eitherReader
            $ \s -> case s of {[c] -> return c; _ -> Left "Expecting a single character"}
+
+amountReader :: ReadM Amount
+amountReader = eitherReader
+             $ \s -> case last (readP_to_S scientificP s) of
+                        (x,"") -> case fromScientific x of 
+                                      Just c -> return c
+                                      _ -> Left "Expecting an amount (max 2 decimal places)"
+                        _ -> Left "Expecting an amount (max 2 decimal places)"
 
 taxesFile :: Parser String
 taxesFile = argument str (metavar "INPUT-FILE" <> help "The JSON or YAML file containing tax related parameters.")
@@ -49,7 +60,7 @@ csvParam = (CsvParam . not)
                           help "Specify the CSV separator to use.") 
 
 investmentTaxation :: Parser Command
-investmentTaxation = CInvestmentTaxation
+investmentTaxation = CForecast
                    <$> taxesFile
                    <*> argument str (metavar "TAXES-FILE" <> help "The JSON or YAML file containing the simulation parameters.")
                    <*> optional outputFile
@@ -62,7 +73,7 @@ investmentTaxationInfo = info (investmentTaxation <**> helper)
                <> progDesc "Computes the effective taxation of various investments according to the parameters in the INPUT-FILE.")
 
 taxTable :: Parser Command
-taxTable = CTaxTable
+taxTable = CEffectiveTaxBrackets
         <$> taxesFile
         <*> optional outputFile
         <*> csvParam
@@ -85,11 +96,53 @@ salaryOrDividendInfo = info (salaryOrDividend <**> helper)
               (fullDesc
                <> progDesc "Computes if it is better to pay a salary or dividend to the fiscal parameters in the INPUT-FILE.")
 
+taxes :: Parser Command
+taxes = CTaxes
+      <$> taxesFile
+      <*> salary 
+      <*> optional eligible 
+      <*> optional noneligible 
+      <*> optional rrsp
+      <*> decimalSeparator
+
+salary :: Parser Amount
+salary = argument amountReader (metavar "SALARY" <> help "The amount of salary")
+eligible :: Parser Amount
+eligible = argument amountReader (metavar "ELIGIBLE DIVIDEND" <> help "The amount of eligible dividend")
+noneligible :: Parser Amount
+noneligible = argument amountReader (metavar "NON ELIGIBLE DIVIDEND" <> help "The amount of non eligible dividend")
+rrsp :: Parser Amount
+rrsp = argument amountReader (metavar "RRSP" <> help "The contribution to RRSP")   
+revenue :: Parser Amount
+revenue = argument amountReader (metavar "AFTER-TAX-INCOME" <> help "The amount of after tax income")
+
+taxesInfo :: ParserInfo Command
+taxesInfo = info (taxes <**> helper)
+              (fullDesc
+               <> progDesc "Computes personnal taxes")
+
+salaryP :: Parser Command
+salaryP = CSalary
+      <$> taxesFile
+      <*> revenue 
+      <*> optional eligible 
+      <*> optional noneligible 
+      <*> optional rrsp
+      <*> decimalSeparator
+
+
+salaryInfo :: ParserInfo Command
+salaryInfo = info (salaryP <**> helper)
+              (fullDesc
+               <> progDesc "Computes the salary needed to reach the requested revenue")
+
 parseCommand :: Parser Command
 parseCommand = subparser
-  ( command "investment-taxation" investmentTaxationInfo <>
-    command "tax-table" taxTableInfo <>
-    command "salary-or-dividend" salaryOrDividendInfo
+  ( command "forecast" investmentTaxationInfo <>
+    command "effective-tax-brackets" taxTableInfo <>
+    command "salary-or-dividend" salaryOrDividendInfo <>
+    command "taxes" taxesInfo <>
+    command "salary" salaryInfo
   )
 
 opts :: ParserInfo Command

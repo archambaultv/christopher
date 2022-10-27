@@ -12,72 +12,115 @@
 
 module Christopher.Amount
 (
-  Amount,
   Rate,
-  roundTo,
-  (*.),
+  showRate,
+  Amount(..),
+  RAmount,
+  unitToAmount,
+  amountToRational,
+  showAmount,
   fromScientific,
   toScientific,
-  toRate,
-  fromScientificR,
-  toScientificR,
-  showAmount,
-  showRate
+  roundAwayFromZero,
+  truncateAmount,
+  (-.),
+  (+.),
+  (*.),
+  (.*),
+  (%.)
 )
 where
 
-import Data.Word
-import Data.Scientific (Scientific)
-import Data.Decimal (Decimal)
-import qualified Data.Decimal as D
+import Data.Ratio ((%))
+import Data.Scientific (Scientific, floatingOrInteger)
 import Data.Aeson (ToJSON(..), FromJSON(..))
 import Data.Csv (ToField(..), FromField(..))
 
-newtype Amount = Amount Decimal
-  deriving (Eq, Ord, Enum, Show, Read, Num, Fractional, Real, RealFrac)
+type Rate = Rational
+type RAmount = Rational
+-- Multiplication of money by money does not make sense, so we do not defined num class
+-- Money is a monoid
+newtype Amount = Amount Integer
+  deriving (Eq, Ord, Enum, Show, Read)
+
+instance Semigroup Amount where
+  (Amount a1) <> (Amount a2) = (Amount $ a1 + a2)
+
+instance Monoid Amount where
+  mempty = Amount 0
+
+unitToAmount :: Integer -> Amount
+unitToAmount x = Amount (x * 100)
+
+amountToInteger :: Amount -> Integer
+amountToInteger (Amount x) = x
+
+amountToRational :: Amount -> Rational
+amountToRational (Amount x) = toRational x
+
+fromScientific :: Scientific -> Maybe Amount
+fromScientific x = 
+  case floatingOrInteger (x * 100) :: Either Double Integer of
+    Right y -> Just (Amount y)
+    _ -> Nothing
+
+toScientific :: Amount -> Scientific
+toScientific = fromRational .  (/ 100) . toRational . amountToInteger
 
 instance ToJSON Amount where
   toJSON = toJSON . toScientific
   toEncoding = toEncoding . toScientific
 
 instance FromJSON Amount where
-    parseJSON = fmap fromScientific . parseJSON
+    parseJSON a = do
+      x <- parseJSON a
+      case fromScientific x of
+        Just y -> return y
+        Nothing -> fail "Number is not a valid currency (max 2 decimal places)"
 
 instance ToField Amount where
   toField = toField . toScientific
 
 instance FromField Amount where
-  parseField = fmap fromScientific . parseField
+  parseField a = do
+      x <- parseField a
+      case fromScientific x of
+        Just y -> return y
+        Nothing -> fail "Number is not a valid currency (max 2 decimal places)"
 
-newtype Rate = Rate Rational
-  deriving (Eq, Ord, Enum, Show, Read, Num, Fractional, ToJSON, FromJSON)
+roundAwayFromZero :: Rational -> Amount
+roundAwayFromZero x =
+  let sign :: Integer
+      sign = truncate (signum x)
+      ax :: Rational
+      ax = abs x
+      intPart :: Integer
+      intPart = truncate ax
+      fracPart :: Rational
+      fracPart = ax - toRational intPart
+  in if fracPart < 1 % 2
+     then Amount $ sign * intPart
+     else Amount $ sign * (intPart + 1)
 
-instance ToField Rate where
-  toField = toField . toScientificR
+truncateAmount :: Rational -> Amount
+truncateAmount x = Amount (truncate x)
 
-instance FromField Rate where
-  parseField = fmap fromScientificR . parseField
+infixl 6 +.
+(+.) :: Amount -> Amount -> Amount
+(+.) = (<>)
 
-roundTo :: Word8 -> Amount -> Amount
-roundTo i (Amount x) = Amount (D.roundTo i x)
+infixl 6 -.
+(-.) :: Amount -> Amount -> Amount
+(-.) (Amount a1) (Amount a2) = (Amount $ a1 - a2)
 
-(*.) :: Amount -> Rate -> Amount
-(*.) (Amount x) (Rate r) = Amount $ x D.*. r
+(%.) :: Amount -> Amount -> Rational
+(%.) (Amount a1) (Amount a2) = a1 % a2
 
-fromScientific :: Scientific -> Amount
-fromScientific = fromRational . toRational
+(*.) :: Amount -> Rational -> Rational
+(*.) (Amount x) r = toRational x * r
 
-toScientific :: Amount -> Scientific
-toScientific = fromRational . toRational
-
-toRate :: Amount -> Rate
-toRate = Rate . toRational
-
-fromScientificR :: Scientific -> Rate
-fromScientificR = Rate . toRational
-
-toScientificR :: Rate -> Scientific
-toScientificR (Rate x)= fromRational x
+(.*) :: Integer -> Amount -> Amount
+(.*) i (Amount x) = Amount (i * x)
 
 -- | Formats a number for reporting
 showAmount :: Char -> Amount -> String
@@ -87,4 +130,4 @@ showAmount decimalSeparator =
 -- | Formats a rate for reporting
 showRate :: Char -> Rate -> String
 showRate decimalSeparator = 
-  map (\x -> if x == '.' then decimalSeparator else x) . show . toScientificR
+  map (\x -> if x == '.' then decimalSeparator else x) . (show :: Double -> String) . fromRational

@@ -35,11 +35,11 @@ data Income = Income {
 } deriving (Show, Eq, Generic)
 
 iEligibleDividend :: Income -> Dividend
-iEligibleDividend (Income _ Nothing _) = 0
+iEligibleDividend (Income _ Nothing _) = mempty
 iEligibleDividend (Income _ (Just d) _) = d
 
 iNonEligibleDividend :: Income -> Dividend
-iNonEligibleDividend (Income _ _ Nothing) = 0
+iNonEligibleDividend (Income _ _ Nothing) = mempty
 iNonEligibleDividend (Income _ _ (Just d)) = d
 
 salary :: Amount -> Income
@@ -53,7 +53,7 @@ instance FromJSON Income where
   parseJSON = genericParseJSON jsonOptions
 
 instance Semigroup Income where
-  i1 <> i2 = Income (iSalary i1 + iSalary i2)
+  i1 <> i2 = Income (iSalary i1 +. iSalary i2)
                     (addMaybe (imEligibleDividend i1) (imEligibleDividend i2))
                     (addMaybe (imNonEligibleDividend i1) (imNonEligibleDividend i2))
 
@@ -61,7 +61,7 @@ addMaybe :: Maybe Amount -> Maybe Amount -> Maybe Amount
 addMaybe Nothing Nothing = Nothing
 addMaybe (Just x) Nothing = Just x
 addMaybe Nothing (Just x) = Just x
-addMaybe (Just x) (Just y) = Just (x + y)
+addMaybe (Just x) (Just y) = Just (x +. y)
 
 instance Monoid Income where
-  mempty = Income 0 Nothing Nothing
+  mempty = Income mempty Nothing Nothing

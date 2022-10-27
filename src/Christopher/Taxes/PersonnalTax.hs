@@ -26,6 +26,8 @@ module Christopher.Taxes.PersonnalTax
   PersonnalTaxInput(..),
   computePersonnalTax,
   disposableIncome,
+  personnalTax,
+  findSalary,
   SocialChargesRates(..),
   SocialCharges(..),
   totalSocialCharges,
@@ -41,6 +43,7 @@ import Data.Aeson (ToJSON(..), FromJSON(..), genericToEncoding,
 import Christopher.Amount
 import Christopher.Taxes.Income
 import Christopher.Internal.LabelModifier
+import Christopher.Internal.BinarySearch
 
 data PersonnalTax = PersonnalTax {
   ptFederalPersonnalTax :: FederalPersonnalTax,
@@ -125,9 +128,10 @@ personnalAmount (LinearPersonnalAmnt maxAmnt maxLimit minAmnt minLimit) netInc =
   then maxAmnt
   else if netInc >= minLimit
        then minAmnt
-       else let slope = (minAmnt - maxAmnt) / (minLimit - maxLimit)
-                diff = netInc - maxLimit
-            in roundTo 2 $ maxAmnt + slope * diff
+       else let slope :: Rational
+                slope = (minAmnt -. maxAmnt) %. (minLimit -. maxLimit)
+                diff = netInc -. maxLimit
+            in maxAmnt +. (roundAwayFromZero $ (diff *. slope))
 
 -- Brackets limit must be in increasing order
 data TaxBrackets = TaxBrackets {
@@ -165,46 +169,48 @@ toAfterTax target taxInfo =
   case target of
     DIBeforeTax x -> disposableIncome 
                       $ computePersonnalTax taxInfo 
-                      $ PersonnalTaxInput (salary x) 0
+                      $ PersonnalTaxInput (salary x) mempty
     DIAfterTax x -> x
 
 totalIncome :: Income -> Amount
 totalIncome income = iSalary income 
-                    + iEligibleDividend income
-                    + iNonEligibleDividend income
+                    +. iEligibleDividend income
+                    +. iNonEligibleDividend income
 
 -- Dividend are multiplied by their multiplier
 totalTaxIncome ::  DividendTax -> Income -> Amount
-totalTaxIncome t income = iSalary income + d1' + d2'
-  where d1' = roundTo 2 $ (iEligibleDividend income) *. (1 + dtEligibleMultiplier t)
-        d2' = roundTo 2 $ (iNonEligibleDividend income) *. (1 + dtNonEligibleMultiplier t)
+totalTaxIncome t income = iSalary income +. d1' +. d2'
+  where d1' = roundAwayFromZero $ (iEligibleDividend income) *. (1 + dtEligibleMultiplier t)
+        d2' = roundAwayFromZero $ (iNonEligibleDividend income) *. (1 + dtNonEligibleMultiplier t)
 
 dividendCredit :: DividendTax -> Income -> (Amount, Amount)
 dividendCredit t income = (eligibleCredit, nonEligibleCredit)
   where
-      eligibleCredit = roundTo 2 
+      eligibleCredit = roundAwayFromZero
                      $ (iEligibleDividend income) 
                      *. (1 + dtEligibleMultiplier t) 
-                     *. (dtEligibleCreditRate t)
-      nonEligibleCredit = roundTo 2 
+                     * (dtEligibleCreditRate t)
+      nonEligibleCredit = roundAwayFromZero
                         $ (iNonEligibleDividend income) 
                         *. (1 + dtNonEligibleMultiplier t) 
-                        *. (dtNonEligibleCreditRate t)
+                        * (dtNonEligibleCreditRate t)
 
 applyBrackets :: TaxBrackets -> Amount -> Amount
-applyBrackets (TaxBrackets baseRate brackets) x = para alg (TaxBracket 0 baseRate : brackets) 0
+applyBrackets (TaxBrackets baseRate brackets) x = 
+  roundAwayFromZero
+  $ para alg (TaxBracket mempty baseRate : brackets) 0
   where
-    alg :: ListF TaxBracket ([TaxBracket], Amount -> Amount) -> (Amount -> Amount) 
+    alg :: ListF TaxBracket ([TaxBracket], Rational -> Rational) -> (Rational -> Rational) 
     alg Nil acc = acc
     alg (Cons (TaxBracket limit rate) ([], _)) acc = 
-      roundTo 2 $ acc + (x - limit) *. rate
+      acc + (amountToRational $ x -. limit) * rate
     alg (Cons (TaxBracket limit rate) ((TaxBracket nextLimit _ : _), next)) acc =
       if x <= nextLimit
       then -- This bracket if the final stop
-           roundTo 2 $ acc + (x - limit) *. rate
+           acc + (amountToRational $ x -. limit) * rate
       else  
            -- Compute this bracket and move on to the next
-        let acc' = roundTo 2 $ acc + (nextLimit - limit) *. rate
+        let acc' = acc + (amountToRational $ nextLimit -. limit) * rate
         in next acc'
 
 data PersonnalTaxReport = PersonnalTaxReport {
@@ -219,7 +225,10 @@ data PersonnalTaxInput = PersonnalTaxInput {
 } deriving (Show, Eq)
 
 disposableIncome :: PersonnalTaxReport -> Amount
-disposableIncome (PersonnalTaxReport r t1 t2) = totalIncome (tiIncome r) - t1 - t2 - (tiRRSPContrib r)
+disposableIncome (PersonnalTaxReport r t1 t2) = totalIncome (tiIncome r) -. t1 -. t2 -. (tiRRSPContrib r)
+
+personnalTax :: PersonnalTaxReport -> Amount
+personnalTax (PersonnalTaxReport _ t1 t2) = t1 +. t2
 
 -- Returns the after tax amount and the taxes paid
 computePersonnalTax :: PersonnalTax -> PersonnalTaxInput -> PersonnalTaxReport
@@ -228,28 +237,27 @@ computePersonnalTax taxes r =
       tQc = computeQcTax (ptQuebecPersonnalTax taxes) r
   in PersonnalTaxReport r tFed tQc
 
-
 computeFedTax :: FederalPersonnalTax -> PersonnalTaxInput -> Amount
 computeFedTax fedTax r =
   let -- Step 2, compute total income
       totalIncome' = totalTaxIncome (fedDividendTax fedTax) (tiIncome r)
       -- Step 3, net income
-      netIncome = max 0 $ totalIncome' - (tiRRSPContrib r)
+      netIncome = max mempty $ totalIncome' -. (tiRRSPContrib r)
       -- Step 4, taxable income
       taxableIncome = netIncome
       -- Step 5.A Federal gross income tax 
       tax = applyBrackets (fedTaxBrackets fedTax) taxableIncome
       -- Step 5.B non refundable tax credit
-      nonRefundableCr = roundTo 2 
+      nonRefundableCr = roundAwayFromZero 
                       $ personnalAmount (fedBasicPersonnalAmount fedTax) taxableIncome 
                       *. (fedNonRefundableTaxCreditsRate fedTax) 
       -- Step 5.C federal net income tax
       (d1, d2) = dividendCredit (fedDividendTax fedTax) (tiIncome r)
-      divCredit = d1 + d2
-      netTax = max 0 $ tax - nonRefundableCr - divCredit 
+      divCredit = d1 +. d2
+      netTax = max mempty $ tax -. nonRefundableCr -. divCredit 
       -- Step 6, Provincial tax
       -- Step 7, Amount due
-      amntDueTax = roundTo 2 $ netTax  *. (1 - fedQuebecAbatement fedTax)
+      amntDueTax = roundAwayFromZero $ netTax  *. (1 - fedQuebecAbatement fedTax)
   in amntDueTax
 
   where
@@ -262,17 +270,18 @@ computeQcTax qcTax r =
       -- workerCredit = min (qcDeductionForWorkersMax qcTax) 
       --              $ (iSalary r) *. (qcDeductionForWorkersRate qcTax)
       --  Don't compute worker's credit if we don't compute QPP, RQAP and other deduction
-      netIncome =  max 0 $ totalIncome' - (tiRRSPContrib r)
+      netIncome =  max mempty $ totalIncome' -. (tiRRSPContrib r)
       -- Step 3, taxable income
       taxableIncome = netIncome
       -- Step 4, non refundable tax credit
-      pc = (qcBasicPersonnalAmount qcTax) 
+      pc = roundAwayFromZero
+         $ (qcBasicPersonnalAmount qcTax) 
          *. (qcNonRefundableTaxCreditsRate qcTax)
       -- Step 5, income taxes
       tax = applyBrackets (qcTaxBrackets qcTax) taxableIncome
-      tax2 = tax - pc -- line 413
+      tax2 = tax -. pc -- line 413
       (d1, d2) = dividendCredit (qcDividendTax qcTax) (tiIncome r)
-      tax3 = max 0 $ tax2 - d1 - d2 -- line 430
+      tax3 = max mempty $ tax2 -. d1 -. d2 -- line 430
       
   in tax3
 
@@ -284,6 +293,18 @@ sortTaxBrackets (PersonnalTax f q) =
   let ftb' = sortTaxBrackets' $ fedTaxBrackets f
       qtb' = sortTaxBrackets' $ qcTaxBrackets q
   in PersonnalTax f{fedTaxBrackets = ftb'} q{qcTaxBrackets = qtb'}
+
+-- Finds the salary, given disposable income, dividends and rrsp
+findSalary :: PersonnalTax -> Amount -> Amount -> Amount -> Amount -> Amount
+findSalary taxes r d o rrsp = 
+  let t x = personnalTax
+          $ computePersonnalTax taxes
+          $ PersonnalTaxInput (Income x (Just d) (Just o)) rrsp
+      foo x = (x +. d +. o -. t x) -. r
+      delta = foo mempty
+  in  if delta >= mempty
+      then mempty
+      else binarySearch foo (mempty, (-3) .* delta)
 
 data SocialChargesRates = SocialChargesRates {
   scrRRQRate :: Rate,
@@ -307,11 +328,11 @@ data SocialCharges = SocialCharges {
 } deriving (Show, Eq)
 
 totalSocialCharges :: SocialCharges -> Amount
-totalSocialCharges (SocialCharges a b c) = a + b + c
+totalSocialCharges (SocialCharges a b c) = a +. b +. c
 
 socialCharges :: SocialChargesRates -> Salary -> SocialCharges
 socialCharges sc s = 
-  let rrq = roundTo 2 $ (min (scrRRQMaxSalary sc) s) *. (scrRRQRate sc)
-      rqap = roundTo 2 $ (min (scrRQAPMaxSalary sc) s) *. (scrRQAPRate sc)
-      fss = roundTo 2 $ s *. scrFSSRate sc
+  let rrq = roundAwayFromZero $ (min (scrRRQMaxSalary sc) s) *. (scrRRQRate sc)
+      rqap = roundAwayFromZero $ (min (scrRQAPMaxSalary sc) s) *. (scrRQAPRate sc)
+      fss = roundAwayFromZero $ s *. scrFSSRate sc
   in SocialCharges rrq rqap fss

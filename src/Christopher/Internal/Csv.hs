@@ -1,7 +1,7 @@
 {-# LANGUAGE OverloadedStrings #-}
 
 -- |
--- Module      :  Christopher.Csv
+-- Module      :  Christopher.Internal.Csv
 -- Copyright   :  © 2022 Vincent Archambault
 -- License     :  MIT
 --
