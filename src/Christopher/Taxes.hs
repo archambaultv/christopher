@@ -16,6 +16,7 @@ module Christopher.Taxes
   sortTaxBrackets',
   module Christopher.Taxes.CorporationTax,
   module Christopher.Taxes.Income,
+  module Christopher.Taxes.Brackets,
   module Christopher.Taxes.PersonnalTax
 )
 where
@@ -26,6 +27,7 @@ import Data.Aeson (ToJSON(..), FromJSON(..), genericToEncoding,
 import Christopher.Taxes.CorporationTax
 import Christopher.Internal.LabelModifier
 import Christopher.Taxes.Income
+import Christopher.Taxes.Brackets
 import Christopher.Taxes.PersonnalTax
 
 -- Uses the same name as PersonnalTax so we can load a JSON / YAML file
@@ -41,7 +43,8 @@ tPersonnalTax (Taxes _ f q) = PersonnalTax f q
 
 sortTaxBrackets' :: Taxes -> Taxes
 sortTaxBrackets' (Taxes c f q) =
-  let (PersonnalTax f' q') = sortTaxBrackets (PersonnalTax f q)
+  let f' = f{fedTaxBrackets = sortTaxBrackets $ fedTaxBrackets f}
+      q' = q{qcTaxBrackets = sortTaxBrackets $ qcTaxBrackets q}
   in Taxes c f' q'
 
 instance ToJSON Taxes where

@@ -16,9 +16,6 @@ module Christopher.Taxes.PersonnalTax
   QuebecPersonnalTax(..),
   LinearPersonnalAmnt(..),
   personnalAmount,
-  TaxBrackets(..),
-  sortTaxBrackets,
-  taxBrackets,
   DividendTax(..),
   DisposableIncome(..),
   toAfterTax,
@@ -36,12 +33,11 @@ module Christopher.Taxes.PersonnalTax
 where
 
 import GHC.Generics
-import Data.List (sortOn, group, sort)
-import Data.Functor.Foldable
 import Data.Aeson (ToJSON(..), FromJSON(..), genericToEncoding, 
                    genericToJSON, genericParseJSON)
 import Christopher.Amount
 import Christopher.Taxes.Income
+import Christopher.Taxes.Brackets
 import Christopher.Internal.LabelModifier
 import Christopher.Internal.BinarySearch
 
@@ -49,13 +45,6 @@ data PersonnalTax = PersonnalTax {
   ptFederalPersonnalTax :: FederalPersonnalTax,
   ptQuebecPersonnalTax :: QuebecPersonnalTax
 } deriving (Show, Eq, Generic)
-
--- Remove duplicates and sorts them
-taxBrackets :: PersonnalTax -> [Amount]
-taxBrackets info = 
-  let f = map tbAbove $ tbBrackets $ fedTaxBrackets $ ptFederalPersonnalTax info
-      q = map tbAbove $ tbBrackets $ qcTaxBrackets $ ptQuebecPersonnalTax info
-  in map head $ group $ sort (f ++ q)
 
 instance ToJSON PersonnalTax where
   toJSON = genericToJSON jsonOptions
@@ -133,32 +122,6 @@ personnalAmount (LinearPersonnalAmnt maxAmnt maxLimit minAmnt minLimit) netInc =
                 diff = netInc -. maxLimit
             in maxAmnt +. (roundAwayFromZero $ (diff *. slope))
 
--- Brackets limit must be in increasing order
-data TaxBrackets = TaxBrackets {
-  tbBaseRate :: Rate,
-  tbBrackets :: [TaxBracket]
-} deriving (Eq, Show, Generic)
-
-data TaxBracket = TaxBracket {
-  tbAbove :: Amount,
-  tbRate :: Rate
-}
- deriving (Show, Eq, Generic)
-
-instance ToJSON TaxBrackets where
-  toJSON = genericToJSON jsonOptions
-  toEncoding = genericToEncoding jsonOptions
-
-instance FromJSON TaxBrackets where
-  parseJSON = genericParseJSON jsonOptions
-
-instance ToJSON TaxBracket where
-  toJSON = genericToJSON jsonOptions
-  toEncoding = genericToEncoding jsonOptions
-
-instance FromJSON TaxBracket where
-  parseJSON = genericParseJSON jsonOptions
-
 data DisposableIncome 
   = DIAfterTax Amount 
   | DIBeforeTax Amount -- As a salary without any dividend
@@ -194,24 +157,6 @@ dividendCredit t income = (eligibleCredit, nonEligibleCredit)
                         $ (iNonEligibleDividend income) 
                         *. (1 + dtNonEligibleMultiplier t) 
                         * (dtNonEligibleCreditRate t)
-
-applyBrackets :: TaxBrackets -> Amount -> Amount
-applyBrackets (TaxBrackets baseRate brackets) x = 
-  roundAwayFromZero
-  $ para alg (TaxBracket mempty baseRate : brackets) 0
-  where
-    alg :: ListF TaxBracket ([TaxBracket], Rational -> Rational) -> (Rational -> Rational) 
-    alg Nil acc = acc
-    alg (Cons (TaxBracket limit rate) ([], _)) acc = 
-      acc + (amountToRational $ x -. limit) * rate
-    alg (Cons (TaxBracket limit rate) ((TaxBracket nextLimit _ : _), next)) acc =
-      if x <= nextLimit
-      then -- This bracket if the final stop
-           acc + (amountToRational $ x -. limit) * rate
-      else  
-           -- Compute this bracket and move on to the next
-        let acc' = acc + (amountToRational $ nextLimit -. limit) * rate
-        in next acc'
 
 data PersonnalTaxReport = PersonnalTaxReport {
   trTaxReportInput :: PersonnalTaxInput,
@@ -284,15 +229,6 @@ computeQcTax qcTax r =
       tax3 = max mempty $ tax2 -. d1 -. d2 -- line 430
       
   in tax3
-
-sortTaxBrackets' :: TaxBrackets -> TaxBrackets
-sortTaxBrackets' (TaxBrackets x xs) = TaxBrackets x (sortOn tbAbove xs)
-
-sortTaxBrackets :: PersonnalTax -> PersonnalTax
-sortTaxBrackets (PersonnalTax f q) =
-  let ftb' = sortTaxBrackets' $ fedTaxBrackets f
-      qtb' = sortTaxBrackets' $ qcTaxBrackets q
-  in PersonnalTax f{fedTaxBrackets = ftb'} q{qcTaxBrackets = qtb'}
 
 -- Finds the salary, given disposable income, dividends and rrsp
 findSalary :: PersonnalTax -> Amount -> Amount -> Amount -> Amount -> Amount

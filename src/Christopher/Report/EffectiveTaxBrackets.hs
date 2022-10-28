@@ -10,9 +10,9 @@
 -- This module defines some functions to simulate the impact of fiscal policy on investment
 
 module Christopher.Report.EffectiveTaxBrackets(
-  -- TaxTableRow(..),
-  -- TaxTableRow'(..),
-  -- taxTable,
+  -- TaxTable,
+  -- salaryTaxTable,
+
   -- printTaxTableRow
 )
 where
